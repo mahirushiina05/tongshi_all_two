@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p \"d:/Users/ASUS/Desktop/tongshi/docs/superpowers/specs\")"
+    ],
+    "additionalDirectories": [
+      "d:\\Users\\ASUS\\Desktop\\tongshi\\docs\\superpowers\\specs"
+    ]
+  }
+}
