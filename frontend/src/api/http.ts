@@ -6,6 +6,27 @@ const http = axios.create({
   timeout: 10000,
 })
 
+function normalizeValidationMessage(message: string) {
+  if (message.includes('String should have at least 6 characters')) return '密码至少 6 位'
+  if (message.includes('密码必须包含至少一个字母')) return '密码必须包含至少一个字母'
+  if (message.includes('密码必须包含至少一个数字')) return '密码必须包含至少一个数字'
+  if (message.includes('Field required')) return '请填写完整信息'
+  return message
+}
+
+function getErrorMessage(error: unknown) {
+  if (!axios.isAxiosError(error)) return '网络错误'
+  const data = error.response?.data
+  if (data?.message) return data.message
+  if (Array.isArray(data?.detail) && data.detail.length > 0) {
+    const firstMessage = String(data.detail[0]?.msg || '')
+    return normalizeValidationMessage(firstMessage || '提交内容不符合要求')
+  }
+  if (typeof data?.detail === 'string') return data.detail
+  if (error.response?.status === 422) return '提交内容不符合要求，请检查填写内容'
+  return error.message || '网络错误'
+}
+
 // 请求拦截器：自动带 JWT token
 http.interceptors.request.use((config) => {
   const token = localStorage.getItem('auth_token')
@@ -32,8 +53,9 @@ http.interceptors.response.use(
     return response.data.data
   },
   (error) => {
-    ElMessage.error(error.message || '网络错误')
-    return Promise.reject(error)
+    const message = getErrorMessage(error)
+    ElMessage.error(message)
+    return Promise.reject(new Error(message))
   }
 )
 

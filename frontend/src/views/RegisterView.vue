@@ -33,6 +33,10 @@ async function handleRegister() {
     ElMessage.warning('密码至少 6 位')
     return
   }
+  if (!/[A-Za-z]/.test(form.password) || !/\d/.test(form.password)) {
+    ElMessage.warning('密码必须同时包含字母和数字')
+    return
+  }
   if (form.password !== form.confirmPassword) {
     ElMessage.warning('两次密码不一致')
     return
@@ -119,7 +123,7 @@ async function handleRegister() {
 
           <div class="form-group">
             <label>密码</label>
-            <el-input v-model="form.password" type="password" placeholder="至少 6 位"
+            <el-input v-model="form.password" type="password" placeholder="至少 6 位，包含字母和数字"
                       size="large" show-password />
           </div>
 
