@@ -28,7 +28,8 @@ backend/
 │   │       ├── class_routes.py   # 班级管理 + Excel 批量导入学生
 │   │       ├── announcement_routes.py  # 公告/任务发布、已读/完成追踪
 │   │       ├── portfolio_routes.py     # 学生成长档案（雷达图+统计）
-│   │       └── upload_routes.py # 通用文件上传
+│   │       ├── upload_routes.py # 通用文件上传（含魔数校验）
+│   │       └── file_routes.py   # 统一文件访问 GET /api/files/{file_id}
 │   │
 │   ├── services/                 # 业务逻辑层
 │   │   ├── auth_service.py       # 登录认证、注册
@@ -41,23 +42,28 @@ backend/
 │   │   ├── class_service.py      # 班级 CRUD + 学生注册 + Excel 导入
 │   │   ├── announcement_service.py     # 公告/任务 CRUD + 未读计数
 │   │   ├── task_service.py       # 任务完成追踪 + 完成报告
-│   │   └── portfolio_service.py  # 成长档案数据聚合
+│   │   ├── portfolio_service.py  # 成长档案数据聚合
+│   │   ├── storage_service.py    # 存储抽象协议 + StoredObject
+│   │   ├── storage_local.py      # 本地文件适配器
+│   │   ├── storage_s3.py         # SeaweedFS S3 适配器
+│   │   └── file_service.py       # 文件元数据写入、URL 构建、记录解析
 │   │
 │   ├── models/
-│   │   └── entities.py           # 所有 SQLAlchemy ORM 模型集中定义（11 张表）
+│   │   └── entities.py           # 所有 SQLAlchemy ORM 模型集中定义（17 张表，含 StoredFile）
 │   │
 │   ├── schemas/
 │   │   └── common.py             # 所有 Pydantic 请求/响应 Schema 集中定义
 │   │
 │   ├── core/
-│   │   ├── config.py             # 读取 .env 配置
+│   │   ├── config.py             # 读取 .env 配置（含存储后端配置）
 │   │   ├── security.py           # JWT 签发/校验 + 密码哈希 + 角色依赖
 │   │   ├── exceptions.py         # 自定义业务异常
 │   │   ├── response.py           # 统一响应格式 {"code": 0, "data": ..., "message": "ok"}
-│   │   └── upload_validation.py  # 文件上传安全校验（类型白名单 + 大小限制）
+│   │   └── upload_validation.py  # 文件上传安全校验（扩展名 + 魔数双重校验）
 │   │
 │   └── db/
-│       └── session.py            # SQLAlchemy 引擎 + 会话工厂
+│       ├── session.py            # SQLAlchemy 引擎 + 会话工厂
+│       └── schema_compat.py      # 旧库字段自动补齐（含 stored_files 表 + teacher_id 字段）
 │
 ├── migrations/
 │   ├── env.py                    # Alembic 迁移环境（自动读 .env 数据库配置）
@@ -65,8 +71,8 @@ backend/
 │
 ├── tests/
 │   ├── conftest.py               # 测试夹具：SQLite 内存库 + TestClient + 种子数据
-v│   ├── test_auth.py              # 集成测试：认证、章节、答题
-│   ├── test_integration_bugfixes.py  # 回归测试：教师隔离、业务修复
+│   ├── test_auth.py              # 集成测试：认证、章节、答题
+│   ├── test_integration_bugfixes.py  # 回归测试：存储、上传、业务修复
 │   └── test_schema_compat.py     # 数据库结构兼容性测试
 │
 ├── docs/
