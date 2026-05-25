@@ -192,3 +192,34 @@ alembic revision --autogenerate -m "描述本次变更"
 # 执行迁移
 alembic upgrade head
 ```
+
+---
+
+## 文件存储配置
+
+支持两种存储后端：`local`（默认，兼容历史）和 `s3`（SeaweedFS / 任意 S3 兼容网关）。
+
+在 `.env` 中配置：
+
+```env
+# 存储后端：local 或 s3
+STORAGE_BACKEND=local
+
+# 本地存储目录（仅 local 模式使用）
+LOCAL_UPLOAD_DIR=backend/uploads
+
+# S3 配置（仅 s3 模式使用）
+S3_ENDPOINT=http://127.0.0.1:8333
+S3_ACCESS_KEY=your_access_key
+S3_SECRET_KEY=your_secret_key
+S3_BUCKET_PUBLIC=tongshi-public
+S3_BUCKET_PRIVATE=tongshi-private
+S3_REGION=us-east-1
+S3_FORCE_PATH_STYLE=true
+```
+
+**统一文件访问路由：** `GET /api/files/{file_id}`，自动根据 `StoredFile` 记录分发到本地或 S3 存储。
+
+**历史兼容：** `/uploads/...` 静态文件挂载仍然保留，旧 URL 继续可用。
+
+**SQLite 说明：** SQLite 仅用于测试内存库（`pytest`），不作为业务运行时数据库。正式环境使用 MySQL。
