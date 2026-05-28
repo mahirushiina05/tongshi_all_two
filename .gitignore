@@ -17,6 +17,7 @@ __pycache__/
 temp/
 .superpowers
 scripts/
+.playwright-mcp
 # 4. IDE 与系统配置文件
 .vscode/
 .idea/

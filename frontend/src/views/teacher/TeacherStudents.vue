@@ -12,10 +12,20 @@ const loading = ref(true)
 const activeTab = ref('students')
 const selectedClassId = ref<number | null>(null)
 
+// 分页
+const currentPage = ref(1)
+const pageSize = ref(20)
+const total = ref(0)
+
 onMounted(async () => {
   try {
-    const [s, c, a] = await Promise.all([getStudents(), getClasses(), getAnnouncements()])
-    students.value = s
+    const [s, c, a] = await Promise.all([
+      getStudents(undefined, currentPage.value, pageSize.value),
+      getClasses(),
+      getAnnouncements(),
+    ])
+    students.value = s.items
+    total.value = s.total
     classes.value = c
     announcements.value = a
   } catch {
@@ -30,7 +40,9 @@ const searchQuery = ref('')
 async function loadStudents() {
   loading.value = true
   try {
-    students.value = await getStudents(selectedClassId.value || undefined)
+    const res = await getStudents(selectedClassId.value || undefined, currentPage.value, pageSize.value)
+    students.value = res.items
+    total.value = res.total
   } catch {
     ElMessage.error('学生数据加载失败，请稍后重试')
   } finally {
@@ -39,6 +51,12 @@ async function loadStudents() {
 }
 
 function handleClassChange() {
+  currentPage.value = 1
+  loadStudents()
+}
+
+function handlePageChange(page: number) {
+  currentPage.value = page
   loadStudents()
 }
 
@@ -82,8 +100,8 @@ async function exportExcel() {
     // 从 localStorage 获取认证 token（与现有下载逻辑保持一致）
     const token = localStorage.getItem('auth_token')
     const url = selectedClassId.value
-      ? `/api/v1/teacher/students/export?class_id=${selectedClassId.value}`
-      : '/api/v1/teacher/students/export'
+      ? `/api/teacher/students/export?class_id=${selectedClassId.value}`
+      : '/api/teacher/students/export'
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -135,7 +153,7 @@ async function exportExcel() {
           style="width: 240px"
           clearable
         />
-        <span class="filter-count">共 {{ filteredStudents.length }} 名学生</span>
+        <span class="filter-count">共 {{ total }} 名学生</span>
         <el-button
           type="primary"
           :loading="exporting"
@@ -174,6 +192,17 @@ async function exportExcel() {
 
       <div v-if="!loading && filteredStudents.length === 0" class="empty-state">
         暂无学生数据，请先导入学生或创建班级。
+      </div>
+
+      <div v-if="total > pageSize" class="pagination-wrap">
+        <el-pagination
+          v-model:current-page="currentPage"
+          :page-size="pageSize"
+          :total="total"
+          layout="prev, pager, next"
+          background
+          @current-change="handlePageChange"
+        />
       </div>
     </template>
 
@@ -379,5 +408,11 @@ async function exportExcel() {
   color: #10b981;
   font-weight: 600;
   font-size: 1rem;
+}
+
+.pagination-wrap {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-xl);
 }
 </style>

@@ -239,6 +239,7 @@ async function handleUpload() {
       title: newMaterial.title.trim(),
       url: uploadResult.url,
       size: formatFileSize(uploadResult.size),
+      file_id: uploadResult.file_id,
     })
     materials.value = await getAllMaterials()
     dialogVisible.value = false

@@ -149,9 +149,13 @@ async function handleImport() {
   }
   importing.value = true
   try {
-    const result = await importStudents(importFile.value)
+    const classId = selectedClass.value?.id
+    const result = await importStudents(importFile.value, classId)
     ElMessage.success(`导入完成：成功 ${result.success_count} 条，跳过 ${result.skip_count} 条，失败 ${result.fail_count} 条`)
     importDialogVisible.value = false
+    if (classId) {
+      classStudents.value = await getClassStudents(classId)
+    }
     await loadClasses()
   } catch {
     ElMessage.error('导入失败')
@@ -166,7 +170,6 @@ async function handleImport() {
     <div class="page-header">
       <h1>班级管理</h1>
       <div class="header-actions">
-        <el-button round @click="openImport">导入学生</el-button>
         <el-button type="primary" round @click="openCreate">新增班级</el-button>
       </div>
     </div>
@@ -212,7 +215,10 @@ async function handleImport() {
     <el-dialog v-model="studentDialogVisible" :title="selectedClass ? `${selectedClass.major} · ${selectedClass.name} 学生列表` : '学生列表'" width="600px">
       <div class="student-toolbar">
         <span class="student-count">共 {{ classStudents.length }} 名学生</span>
-        <el-button size="small" type="primary" plain round @click="openEnroll">手动添加</el-button>
+        <div>
+          <el-button size="small" plain round @click="openImport">Excel 导入</el-button>
+          <el-button size="small" type="primary" plain round @click="openEnroll">手动添加</el-button>
+        </div>
       </div>
       <el-table :data="classStudents" stripe v-loading="studentLoading" style="width: 100%">
         <el-table-column prop="id" label="学号" width="120" />
@@ -249,12 +255,10 @@ async function handleImport() {
     <!-- Import dialog -->
     <el-dialog v-model="importDialogVisible" title="Excel 批量导入学生" width="480px">
       <div class="import-info">
-        <p>请上传 .xlsx 文件，表头格式：</p>
-        <table class="format-table">
-          <thead><tr><th>student_id</th><th>name</th><th>major</th><th>class_name</th></tr></thead>
-          <tbody><tr><td>2025006</td><td>赵同学</td><td>自动化专业</td><td>2025级1班</td></tr></tbody>
-        </table>
-        <p class="import-note">系统将自动创建不存在的用户（默认密码 123456）和班级。</p>
+        <p v-if="selectedClass">将导入至班级「{{ selectedClass.name }}」</p>
+        <p>请上传从教务系统导出的 .xlsx 文件。</p>
+        <p>系统会自动识别包含「学号」「姓名」的表头行，「姓名」右边一列将作为专业信息。</p>
+        <p class="import-note">已存在的学生将更新姓名和专业，不会重复创建。默认密码 123456。</p>
       </div>
       <div class="upload-zone-import" @click="importInput?.click()">
         <input ref="importInput" type="file" accept=".xlsx,.xls" hidden @change="handleImportFile" />

@@ -1,6 +1,18 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
+function isTokenExpired(token: string): boolean {
+  try {
+    const parts = token.split('.')
+    if (parts.length < 2) return true
+    const payload = JSON.parse(atob(parts[1]!))
+    if (!payload.exp) return false
+    return payload.exp * 1000 < Date.now() + 10_000
+  } catch {
+    return true
+  }
+}
+
 const AdminLayout = () => import('../views/admin/AdminLayout.vue')
 const AdminTeachers = () => import('../views/admin/AdminTeachers.vue')
 const ChangePasswordView = () => import('../views/ChangePasswordView.vue')
@@ -212,6 +224,12 @@ router.beforeEach((to) => {
   if (to.path === '/') return true
 
   if (!authStore.isLoggedIn) {
+    return '/login'
+  }
+
+  // Token 过期检查：过期则清除状态并跳转登录
+  if (authStore.token && isTokenExpired(authStore.token)) {
+    authStore.logout()
     return '/login'
   }
 

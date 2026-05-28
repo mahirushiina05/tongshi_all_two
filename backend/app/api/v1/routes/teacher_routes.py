@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.session import get_db
 from app.core.security import require_role
-from app.core.response import success
+from app.core.response import success, paginated_success
 from app.core.exceptions import BusinessException
 from app.schemas.common import AuthUser, ProjectReviewAction
 from app.services.teacher_service import get_teacher_stats, list_students, list_all_projects
@@ -67,20 +67,25 @@ def teacher_stats(db: Session = Depends(get_db), _: AuthUser = Depends(require_r
 @router.get("/students", summary="学生数据", description="教师端：返回所有学生的学号、姓名、专业、班级、学习进度和练习统计")
 def get_students(
     class_id: int = None,
+    page: int = 1,
+    page_size: int = 20,
     db: Session = Depends(get_db),
     _: AuthUser = Depends(require_role("teacher")),
 ):
-    return success(list_students(db, class_id))
+    items, total = list_students(db, class_id, page, page_size)
+    return paginated_success(items, total, page, page_size)
 
 
 @router.get("/projects", summary="作品审核列表", description="教师端：按状态筛选所有学生作品，默认返回全部")
 def get_all_projects(
     status: str = None,
+    page: int = 1,
+    page_size: int = 20,
     db: Session = Depends(get_db),
     _: AuthUser = Depends(require_role("teacher")),
 ):
-    projects = list_all_projects(db, status)
-    return success([_format_project(db, p) for p in projects])
+    projects, total = list_all_projects(db, status, page, page_size)
+    return paginated_success([_format_project(db, p) for p in projects], total, page, page_size)
 
 
 @router.post("/projects/{project_id}/approve", summary="通过作品审核", description="教师端：将指定作品设为审核通过")
@@ -291,8 +296,8 @@ def export_students_excel(
     _: AuthUser = Depends(require_role("teacher")),
 ):
     """导出学生数据为 Excel。指定 class_id 时单 Sheet，否则全部班级多 Sheet"""
-    # 复用现有 service 获取学生数据
-    students = list_students(db, class_id=class_id)
+    # 复用现有 service 获取学生数据（不分页，全量导出）
+    students, _ = list_students(db, class_id=class_id)
     today = date.today().strftime("%Y-%m-%d")
     wb = Workbook()
 

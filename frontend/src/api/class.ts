@@ -39,9 +39,12 @@ export function unenrollStudent(classId: number, studentId: string) {
   return http.delete<any, any>(`/classes/${classId}/enroll/${studentId}`)
 }
 
-export function importStudents(file: File) {
+export function importStudents(file: File, classId?: number) {
   const formData = new FormData()
   formData.append('file', file)
+  if (classId !== undefined) {
+    formData.append('class_id', String(classId))
+  }
   return http.post<any, { success_count: number; skip_count: number; fail_count: number; errors: string[] }>('/classes/import', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })

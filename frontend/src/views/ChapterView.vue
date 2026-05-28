@@ -2,6 +2,7 @@
 import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getChapterContents } from '@/api/chapter'
+import { resolveFileUrl } from '@/utils/url'
 import VideoPlayer from './content/VideoPlayer.vue'
 import PdfViewer from './content/PdfViewer.vue'
 
@@ -116,12 +117,12 @@ function selectContent(id: number) {
               <h2 class="player-title">{{ selectedContent.title }}</h2>
               <VideoPlayer
                 v-if="selectedContent.type === 'video'"
-                :src="selectedContent.url || undefined"
+                :src="resolveFileUrl(selectedContent.url)"
                 :title="selectedContent.title"
               />
               <PdfViewer
                 v-else
-                :src="selectedContent.url || undefined"
+                :src="resolveFileUrl(selectedContent.url)"
                 :title="selectedContent.title"
               />
             </div>

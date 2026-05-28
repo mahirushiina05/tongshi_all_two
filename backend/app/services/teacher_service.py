@@ -16,14 +16,19 @@ def get_teacher_stats(db: Session):
     }
 
 
-def list_students(db: Session, class_id: int = None):
+def list_students(db: Session, class_id: int = None, page: int = None, page_size: int = None):
     query = db.query(User).filter(User.role == "student")
     if class_id:
         query = (
             query.join(StudentClassEnrollment, StudentClassEnrollment.user_id == User.id)
             .filter(StudentClassEnrollment.class_id == class_id)
         )
-    students = query.order_by(User.id).all()
+    query = query.order_by(User.id)
+    total = query.count()
+    if page and page_size:
+        students = query.offset((page - 1) * page_size).limit(page_size).all()
+    else:
+        students = query.all()
     result = []
     for s in students:
         progresses = db.query(StudentProgress).filter(StudentProgress.user_id == s.id).all()
@@ -55,13 +60,19 @@ def list_students(db: Session, class_id: int = None):
             "exercises": total_done,
             "accuracy": avg_accuracy,
         })
-    return result
+    return result, total
 
 
-def list_all_projects(db: Session, status: str = None):
+def list_all_projects(db: Session, status: str = None, page: int = None, page_size: int = None):
     query = db.query(Project)
     if status:
         query = query.filter(Project.status == status)
     else:
         query = query.filter(Project.status.in_(["pending", "approved"]))
-    return query.order_by(Project.date.desc()).all()
+    query = query.order_by(Project.date.desc())
+    total = query.count()
+    if page and page_size:
+        projects = query.offset((page - 1) * page_size).limit(page_size).all()
+    else:
+        projects = query.all()
+    return projects, total

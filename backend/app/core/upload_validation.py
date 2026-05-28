@@ -15,7 +15,7 @@ ALLOWED_UPLOAD_EXTENSIONS = {
 
 ALLOWED_EXCEL_EXTENSIONS = {".xlsx", ".xls"}
 
-MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 通用上传：50MB
+MAX_UPLOAD_SIZE = 2 * 1024 * 1024 * 1024  # 通用上传：2GB（支持教学视频）
 MAX_EXCEL_SIZE = 10 * 1024 * 1024   # Excel 导入：10MB
 
 # 魔数映射：扩展名 → 允许的文件头字节前缀

@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from io import BytesIO
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 from openpyxl import load_workbook
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -226,81 +226,116 @@ def remove_student(db: Session, class_id: int, student_id: str):
     return enrollment
 
 
-def _split_row(row: dict) -> Tuple[str, str, str, str]:
-    return (
-        str(row.get("student_id", "")).strip(),
-        str(row.get("name", "")).strip(),
-        str(row.get("major", "")).strip(),
-        str(row.get("class_name", "")).strip(),
-    )
+def import_students_from_excel(db: Session, file_bytes: bytes, class_id: int | None = None):
+    """从 Excel 导入学生，自动适配教务系统导出格式。
 
+    适配逻辑：
+    1. 扫描前 15 行，找到包含「学号」的行作为表头行
+    2. 在表头行中定位「学号」「姓名」所在列
+    3. 「姓名」列的下一列视为专业列（如无则留空）
+    4. 表头行以下、学号非空的行作为数据行
 
-def import_students_from_excel(db: Session, file_bytes: bytes):
+    传入 class_id 时，自动将导入的学生注册到该班级。
+    """
+    # 如果指定了班级，先验证班级存在
+    target_class = None
+    if class_id is not None:
+        target_class = db.query(Class).filter(Class.id == class_id).first()
+        if not target_class:
+            raise BusinessException(404, "班级不存在")
+
     try:
         wb = load_workbook(filename=BytesIO(file_bytes), data_only=True)
         ws = wb.active
     except Exception:
         raise BusinessException(400, "Excel 文件解析失败")
 
-    headers = [str(cell.value).strip() if cell.value is not None else "" for cell in next(
-        ws.iter_rows(min_row=1, max_row=1))]
-    required = {"student_id", "name", "major", "class_name"}
-    if not required.issubset(set(headers)):
-        raise BusinessException(400, "Excel 表头不完整")
+    # 扫描前 15 行，找到包含「学号」的表头行
+    header_row_idx = None
+    header_values = None
+    for i, row in enumerate(ws.iter_rows(min_row=1, max_row=15, values_only=True), start=1):
+        str_vals = [str(c).strip() if c is not None else "" for c in row]
+        if any("学号" in v for v in str_vals):
+            header_row_idx = i
+            header_values = str_vals
+            break
 
-    header_map = {h: idx for idx, h in enumerate(headers)}
-    result = {"success_count": 0, "skip_count": 0,
-              "fail_count": 0, "errors": []}
+    if header_row_idx is None or header_values is None:
+        raise BusinessException(400, "未找到表头行，请确认文件包含「学号」列")
 
-    for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-        row_data = {
-            "student_id": row[header_map["student_id"]] if header_map["student_id"] < len(row) else None,
-            "name": row[header_map["name"]] if header_map["name"] < len(row) else None,
-            "major": row[header_map["major"]] if header_map["major"] < len(row) else None,
-            "class_name": row[header_map["class_name"]] if header_map["class_name"] < len(row) else None,
-        }
-        student_id, name, major, class_name = _split_row(row_data)
-        if not student_id or not name or not major or not class_name:
-            result["fail_count"] += 1
-            result["errors"].append({"row": row_idx, "reason": "字段不能为空"})
+    # 定位学号列和姓名列
+    id_col = None
+    name_col = None
+    for idx, val in enumerate(header_values):
+        if val == "学号":
+            id_col = idx
+        elif val == "姓名":
+            name_col = idx
+
+    if id_col is None:
+        raise BusinessException(400, "未找到「学号」列")
+    if name_col is None:
+        raise BusinessException(400, "未找到「姓名」列")
+
+    # 专业列 = 姓名列的下一列
+    major_col = name_col + 1
+
+    # 遍历数据行
+    result = {"success_count": 0, "skip_count": 0, "fail_count": 0, "errors": []}
+
+    for row_idx, row in enumerate(
+        ws.iter_rows(min_row=header_row_idx + 1, values_only=True),
+        start=header_row_idx + 1,
+    ):
+        row_list = list(row)
+        if id_col >= len(row_list) or name_col >= len(row_list):
             continue
 
-        # 使用保存点让每行独立提交，单行失败不影响其他行
+        student_id = str(row_list[id_col]).strip() if row_list[id_col] is not None else ""
+        name = str(row_list[name_col]).strip() if row_list[name_col] is not None else ""
+
+        if not student_id or not name:
+            continue
+
+        # 提取专业（可能为 None）
+        major = ""
+        if major_col < len(row_list) and row_list[major_col] is not None:
+            major = str(row_list[major_col]).strip()
+
         try:
             with db.begin_nested():
                 student = db.query(User).filter(User.id == student_id).first()
+                is_new = False
                 if not student:
                     student = User(
                         id=student_id,
                         name=name,
-                        hashed_password=get_password_hash(
-                            DEFAULT_STUDENT_PASSWORD),
+                        hashed_password=get_password_hash(DEFAULT_STUDENT_PASSWORD),
                         role="student",
                         major=major,
                     )
                     db.add(student)
                     db.flush()
+                    is_new = True
                 else:
                     student.name = name
                     student.major = major
 
-                cls = db.query(Class).filter(Class.name == class_name).first()
-                if not cls:
-                    cls = Class(name=class_name, major=major)
-                    db.add(cls)
-                    db.flush()
+                # 指定了班级时，自动注册
+                if target_class is not None:
+                    existing_enrollment = db.query(StudentClassEnrollment).filter(
+                        StudentClassEnrollment.user_id == student_id,
+                        StudentClassEnrollment.class_id == target_class.id,
+                    ).first()
+                    if not existing_enrollment:
+                        db.add(StudentClassEnrollment(
+                            user_id=student_id, class_id=target_class.id))
+                        db.flush()
 
-                existing = db.query(StudentClassEnrollment).filter(
-                    StudentClassEnrollment.user_id == student_id,
-                    StudentClassEnrollment.class_id == cls.id,
-                ).first()
-                if existing:
+                if is_new:
+                    result["success_count"] += 1
+                else:
                     result["skip_count"] += 1
-                    continue
-
-                db.add(StudentClassEnrollment(
-                    user_id=student_id, class_id=cls.id))
-            result["success_count"] += 1
         except (SQLAlchemyError, IntegrityError) as exc:
             result["fail_count"] += 1
             result["errors"].append({"row": row_idx, "reason": str(exc)[:120]})

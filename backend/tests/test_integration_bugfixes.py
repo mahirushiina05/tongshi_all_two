@@ -319,9 +319,10 @@ class TestIntegrationBugfixes:
         data = resp.json()
 
         assert data["code"] == 0
-        assert [item["id"] for item in data["data"]] == ["2025998"]
-        assert data["data"][0]["class_id"] == cls.id
-        assert data["data"][0]["class_name"] == "筛选测试班"
+        items = data["data"]["items"]
+        assert [item["id"] for item in items] == ["2025998"]
+        assert items[0]["class_id"] == cls.id
+        assert items[0]["class_name"] == "筛选测试班"
 
     def test_delete_class_removes_students_that_only_belong_to_that_class(self, client, db_session, teacher_token):
         from app.core.security import get_password_hash
@@ -445,6 +446,45 @@ class TestIntegrationBugfixes:
             resp = client.get(f"/api/files/{file_id}", headers=auth_header(teacher_token))
             assert resp.status_code == 200
             assert resp.content.startswith(b"%PDF")
+        finally:
+            try:
+                if test_file.exists():
+                    test_file.unlink()
+            except PermissionError:
+                pass
+
+    def test_get_file_by_file_id_supports_range_requests(self, client, db_session, teacher_token):
+        """浏览器播放视频时应支持 Range 分段请求"""
+        upload_dir = Path(__file__).resolve().parents[1] / "uploads"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        test_file = upload_dir / "range-test.mp4"
+        test_file.write_bytes(b"0123456789")
+
+        try:
+            stored = StoredFile(
+                biz_type="material",
+                storage_provider="local",
+                object_key="range-test.mp4",
+                original_name="range-test.mp4",
+                stored_name="range-test.mp4",
+                content_type="video/mp4",
+                extension=".mp4",
+                size_bytes=10,
+                created_by="T001",
+            )
+            db_session.add(stored)
+            db_session.commit()
+
+            resp = client.get(
+                f"/api/files/{stored.id}",
+                headers={**auth_header(teacher_token), "Range": "bytes=0-3"},
+            )
+
+            assert resp.status_code == 206
+            assert resp.content == b"0123"
+            assert resp.headers["content-range"] == "bytes 0-3/10"
+            assert resp.headers["accept-ranges"] == "bytes"
+            assert resp.headers["content-length"] == "4"
         finally:
             try:
                 if test_file.exists():

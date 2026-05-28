@@ -1,5 +1,7 @@
 """Class routes"""
-from fastapi import APIRouter, Depends, File, UploadFile
+from typing import Optional
+
+from fastapi import APIRouter, Depends, File, UploadFile, Form
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -59,12 +61,17 @@ def remove_enrollment(class_id: int, student_id: str, db: Session = Depends(get_
     return success()
 
 
-@router.post("/import", summary="Excel 批量导入", description="教师端：上传 Excel 文件批量导入学生、班级和注册关系（.xlsx，表头：student_id/name/major/class_name）")
-def import_class_students(file: UploadFile = File(...), db: Session = Depends(get_db), _: AuthUser = Depends(require_role("teacher"))):
+@router.post("/import", summary="Excel 批量导入", description="教师端：上传 Excel 文件批量导入学生（自动识别学号/姓名/专业列），可指定 class_id 自动注册到班级")
+def import_class_students(
+    file: UploadFile = File(...),
+    class_id: Optional[int] = Form(None),
+    db: Session = Depends(get_db),
+    _: AuthUser = Depends(require_role("teacher")),
+):
     content = file.file.read()
     err = validate_upload(file.filename, len(
         content), allowed_extensions=ALLOWED_EXCEL_EXTENSIONS, max_size=MAX_EXCEL_SIZE)
     if err:
         raise BusinessException(400, err)
-    result = import_students_from_excel(db, content)
+    result = import_students_from_excel(db, content, class_id=class_id)
     return success(result)
