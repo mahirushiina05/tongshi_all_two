@@ -5,8 +5,9 @@ from io import BytesIO
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, UploadFile, File
-from openpyxl import load_workbook
+from fastapi import APIRouter, Depends, UploadFile, File, Query
+from fastapi.responses import Response
+from openpyxl import Workbook, load_workbook
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -144,7 +145,53 @@ def remove_course(course_id: int, db: Session = Depends(get_db), current_user: A
     return success()
 
 
-@router.post("/import", summary="Excel 批量导入题目", description="教师端：上传 Excel 批量导入题目（.xlsx，表头：type/course/stem/options/answer/explanation）")
+def _build_question_template(question_type: str) -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "题目导入模板"
+    ws.append(["题型", "课程名称", "题干", "选项（选择题用 | 分隔）", "答案", "解析"])
+    if question_type == "choice":
+        ws.append(["choice", "示例课程", "图灵测试由谁提出？", "A. 图灵|B. 冯·诺依曼|C. 乔布斯|D. 爱因斯坦", "A", "图灵提出了图灵测试。"])
+    elif question_type == "fill":
+        ws.append(["fill", "示例课程", "中国的首都是哪里？", "", "北京", "填空题直接填写答案关键词。"])
+    else:
+        ws.append(["choice", "示例课程", "图灵测试由谁提出？", "A. 图灵|B. 冯·诺依曼|C. 乔布斯|D. 爱因斯坦", "A", "图灵提出了图灵测试。"])
+        ws.append(["fill", "示例课程", "中国的首都是哪里？", "", "北京", "填空题直接填写答案关键词。"])
+    buffer = BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()
+
+
+def _download_template_response(template_type: str):
+    content = _build_question_template(template_type)
+    filename_map = {
+        "choice": "choice-question-template.xlsx",
+        "fill": "fill-question-template.xlsx",
+        "all": "question-template.xlsx",
+    }
+    filename = filename_map[template_type]
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+    }
+    return Response(content=content, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers=headers)
+
+
+@router.get("/import/template", summary="下载题目导入模板", description="教师端：下载 Excel 批量导入模板（中文表头，支持选择题和填空题）")
+def download_question_template(template_type: str = Query("all", pattern="^(all|choice|fill)$"), current_user: AuthUser = Depends(require_role("teacher"))):
+    return _download_template_response(template_type)
+
+
+@router.get("/import/template/choice", summary="下载选择题导入模板", description="教师端：下载选择题 Excel 模板")
+def download_choice_question_template(current_user: AuthUser = Depends(require_role("teacher"))):
+    return _download_template_response("choice")
+
+
+@router.get("/import/template/fill", summary="下载填空题导入模板", description="教师端：下载填空题 Excel 模板")
+def download_fill_question_template(current_user: AuthUser = Depends(require_role("teacher"))):
+    return _download_template_response("fill")
+
+
+@router.post("/import", summary="Excel 批量导入题目", description="教师端：上传 Excel 批量导入题目（.xlsx，表头：题型/课程名称/题干/选项/答案/解析）")
 def import_questions(file: UploadFile = File(...), db: Session = Depends(get_db), current_user: AuthUser = Depends(require_role("teacher"))):
     content = file.file.read()
     err = validate_upload(file.filename, len(

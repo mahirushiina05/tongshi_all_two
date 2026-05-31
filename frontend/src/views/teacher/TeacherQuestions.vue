@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { createQuestion, deleteQuestion, getQuestions, importQuestions, updateQuestion, type Question } from '@/api/question'
+import { createQuestion, deleteQuestion, downloadQuestionTemplate, getQuestions, importQuestions, updateQuestion, type Question } from '@/api/question'
 import { getCourses, type Course } from '@/api/course'
 
 const courses = ref<Course[]>([])
@@ -124,9 +124,31 @@ async function handleDelete(row: Question) {
   }
 }
 
+const templateType = ref<'all' | 'choice' | 'fill'>('all')
+
 function openImport() {
   importFile.value = null
+  templateType.value = 'all'
   importDialogVisible.value = true
+}
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+async function handleDownloadTemplate() {
+  try {
+    const blob = await downloadQuestionTemplate(templateType.value)
+    const filename = templateType.value === 'choice' ? 'choice-question-template.xlsx' : templateType.value === 'fill' ? 'fill-question-template.xlsx' : 'question-template.xlsx'
+    triggerDownload(blob as Blob, filename)
+  } catch {
+    ElMessage.error('模板下载失败，请稍后重试')
+  }
 }
 
 function handleImportFile(event: Event) {
@@ -245,23 +267,34 @@ onMounted(async () => {
       </template>
     </el-dialog>
 
-    <el-dialog v-model="importDialogVisible" title="Excel 批量导入题目" width="500px">
+    <el-dialog v-model="importDialogVisible" title="Excel 批量导入题目" width="560px">
       <div class="import-info">
-        <p>请上传 .xlsx 文件，表头格式：</p>
+        <p>请先选择模板类型并下载，再按模板填写后上传。</p>
         <table class="format-table">
           <thead>
-            <tr><th>type</th><th>course</th><th>stem</th><th>options</th><th>answer</th><th>explanation</th></tr>
+            <tr><th>题型</th><th>课程名称</th><th>题干</th><th>选项（选择题用 | 分隔）</th><th>答案</th><th>解析</th></tr>
           </thead>
           <tbody>
-            <tr><td>choice</td><td>测试课程</td><td>图灵测试由谁提出？</td><td>A. 图灵|B. 冯诺依曼</td><td>A</td><td>解析内容</td></tr>
+            <tr><td>choice</td><td>示例课程</td><td>图灵测试由谁提出？</td><td>A. 图灵|B. 冯·诺依曼|C. 乔布斯|D. 爱因斯坦</td><td>A</td><td>图灵提出了图灵测试。</td></tr>
+            <tr><td>fill</td><td>示例课程</td><td>中国的首都是哪里？</td><td></td><td>北京</td><td>填空题直接填写答案关键词。</td></tr>
           </tbody>
         </table>
-        <p class="import-note">course 填当前教师已有课程名称；type 为 choice 或 fill。</p>
+        <p class="import-note">请将“课程名称”填写为当前教师已有课程名称；“题型”仅支持 choice 和 fill。</p>
       </div>
-      <div class="upload-zone" @click="importInput?.click()">
-        <input ref="importInput" type="file" accept=".xlsx,.xls" hidden @change="handleImportFile" />
-        <span v-if="!importFile">点击选择 Excel 文件</span>
-        <span v-else class="file-name">{{ importFile.name }}</span>
+      <div class="import-actions">
+        <div class="template-block">
+          <el-select v-model="templateType" style="width: 160px">
+            <el-option label="全部题型模板" value="all" />
+            <el-option label="选择题模板" value="choice" />
+            <el-option label="填空题模板" value="fill" />
+          </el-select>
+          <el-button class="download-btn" @click="handleDownloadTemplate">下载模板</el-button>
+        </div>
+        <div class="upload-zone" @click="importInput?.click()">
+          <input ref="importInput" type="file" accept=".xlsx,.xls" hidden @change="handleImportFile" />
+          <span v-if="!importFile">点击选择 Excel 文件</span>
+          <span v-else class="file-name">{{ importFile.name }}</span>
+        </div>
       </div>
       <template #footer>
         <el-button @click="importDialogVisible = false">取消</el-button>
@@ -301,6 +334,24 @@ onMounted(async () => {
 .import-note {
   color: var(--color-text-muted);
   font-size: 0.9rem;
+}
+
+.import-actions {
+  display: flex;
+  gap: var(--space-lg);
+  align-items: stretch;
+  margin-top: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.template-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.download-btn {
+  align-self: flex-start;
 }
 
 .empty-state {
@@ -352,12 +403,18 @@ onMounted(async () => {
 }
 
 .upload-zone {
-  padding: var(--space-xl);
+  min-width: 280px;
+  min-height: 120px;
+  padding: var(--space-2xl);
   border: 2px dashed var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   text-align: center;
   color: var(--color-text-muted);
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
 }
 
 .upload-zone:hover,

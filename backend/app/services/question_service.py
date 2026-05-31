@@ -144,22 +144,25 @@ def import_questions_from_excel(db: Session, rows: list[dict], teacher_id: str):
     errors = []
     for idx, row in enumerate(rows, start=2):
         try:
-            course_name = str(row.get("course", "")).strip()
+            course_name = str(row.get("课程名称", row.get("course", ""))).strip()
             course = db.query(Course).filter(
                 Course.name == course_name,
                 Course.created_by == teacher_id,
             ).first()
             if not course:
                 raise BusinessException(400, f"未找到课程: {course_name}")
-            q_type = str(row.get("type", "")).strip()
-            stem = str(row.get("stem", "")).strip()
+            q_type = str(row.get("题型", row.get("type", ""))).strip()
+            stem = str(row.get("题干", row.get("stem", ""))).strip()
             if not stem:
                 raise BusinessException(400, "题干为空")
-            options = str(row.get("options", "")).strip()
-            option_list = [x.strip() for x in options.split("|")
-                           if x.strip()] if options else []
-            answer = str(row.get("answer", "")).strip()
-            explanation = str(row.get("explanation", "")).strip()
+            options = str(row.get("选项（选择题用 | 分隔）", row.get("options", ""))).strip()
+            option_list = [x.strip() for x in options.split("|") if x.strip()] if options else []
+            answer = str(row.get("答案", row.get("answer", ""))).strip()
+            explanation = str(row.get("解析", row.get("explanation", ""))).strip()
+            if q_type not in {"choice", "fill"}:
+                raise BusinessException(400, "题型必须为 choice 或 fill")
+            if q_type == "choice" and not option_list:
+                raise BusinessException(400, "选择题必须填写选项")
             q = Question(type=q_type, course_id=course.id, stem=stem,
                          options=option_list, answer=answer, explanation=explanation)
             db.add(q)
