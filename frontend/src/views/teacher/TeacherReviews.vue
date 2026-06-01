@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { approveProject, downloadProjectReportsZip, getAllProjects, rejectProject } from '@/api/teacher'
+import { approveProject, deleteProject, downloadProjectReportsZip, getAllProjects, rejectProject } from '@/api/teacher'
 import type { Project } from '@/api/project'
 import { resolveFileUrl } from '@/utils/url'
 
@@ -140,6 +140,24 @@ async function handleReject() {
   }
 }
 
+async function handleDeleteProject(project: Project) {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除作品「${project.title}」吗？删除后不可恢复。`,
+      '确认删除',
+      { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' },
+    )
+    await deleteProject(project.id)
+    ElMessage.success('已删除')
+    drawerVisible.value = false
+    loadProjects()
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error('删除失败，请稍后重试')
+    }
+  }
+}
+
 async function handleBatchDownload() {
   downloading.value = true
   try {
@@ -214,9 +232,10 @@ async function handleBatchDownload() {
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="90" fixed="right">
+      <el-table-column label="操作" width="140" fixed="right">
         <template #default="{ row }">
           <el-button text size="small" @click="openDetail(row)">查看</el-button>
+          <el-button text size="small" type="danger" @click="handleDeleteProject(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -321,6 +340,9 @@ async function handleBatchDownload() {
             <el-input v-model="rejectReason" type="textarea" :rows="2" placeholder="请填写驳回理由" />
             <el-button type="danger" round @click="handleReject">驳回</el-button>
           </div>
+        </div>
+        <div class="detail-actions" style="margin-top: var(--space-md);">
+          <el-button type="danger" round plain @click="handleDeleteProject(selectedProject)">删除此作品</el-button>
         </div>
       </template>
     </el-drawer>

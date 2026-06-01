@@ -1,11 +1,19 @@
 import http from './http'
 
+export interface ShowcaseItemImageOut {
+    id: number
+    file_id: number
+    url: string
+    sort_order: number
+}
+
 export interface ShowcaseItemOut {
     id: number
     section: string
     title: string
     content: string
     cover_url: string
+    images: ShowcaseItemImageOut[]
     link_url: string
     sort_order: number
     is_active: boolean
@@ -17,6 +25,7 @@ export interface ShowcaseItemCreate {
     title: string
     content?: string
     cover_file_id?: number | null
+    image_file_ids?: number[]
     link_url?: string
     sort_order?: number
 }
@@ -25,6 +34,7 @@ export interface ShowcaseItemUpdate {
     title?: string
     content?: string
     cover_file_id?: number | null
+    image_file_ids?: number[]
     link_url?: string
     sort_order?: number
     is_active?: boolean
@@ -53,4 +63,9 @@ export function updateShowcaseItem(id: number, data: ShowcaseItemUpdate) {
 /** 管理员删除图文内容 */
 export function deleteShowcaseItem(id: number) {
     return http.delete<any, { id: number }>(`/showcase/${id}`)
+}
+
+/** 管理员删除单张图片 */
+export function deleteShowcaseImage(itemId: number, imageId: number) {
+    return http.delete<any, { id: number }>(`/showcase/${itemId}/images/${imageId}`)
 }

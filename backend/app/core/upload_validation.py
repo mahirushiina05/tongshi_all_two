@@ -15,8 +15,12 @@ ALLOWED_UPLOAD_EXTENSIONS = {
 
 ALLOWED_EXCEL_EXTENSIONS = {".xlsx", ".xls"}
 
-MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 通用上传：50MB。
-MAX_EXCEL_SIZE = 10 * 1024 * 1024   # Excel 导入：10MB。
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024      # 通用上传：50MB。
+MAX_EXCEL_SIZE = 10 * 1024 * 1024       # Excel 导入：10MB。
+MAX_VIDEO_SIZE = 1 * 1024 * 1024 * 1024  # 视频上传：1GB。
+
+# 视频文件扩展名集合，用于自动应用视频大小限制。
+_VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov"}
 
 # 魔数映射：扩展名 -> 允许的文件头字节前缀（均在偏移 0 处检查）。
 _MAGIC_SIGNATURES = {
@@ -99,7 +103,7 @@ def validate_magic_number(content: bytes, filename: str) -> str | None:
 
 def validate_upload(filename: str, file_size: int,
                     allowed_extensions: set = ALLOWED_UPLOAD_EXTENSIONS,
-                    max_size: int = MAX_UPLOAD_SIZE,
+                    max_size: int | None = None,
                     content: bytes | None = None) -> str | None:
     """校验上传文件；通过返回 None，失败返回错误信息。"""
     if not filename:
@@ -107,6 +111,9 @@ def validate_upload(filename: str, file_size: int,
     ext = Path(filename).suffix.lower()
     if ext not in allowed_extensions:
         return f"不支持的文件类型: {ext}"
+    # 视频文件自动使用 1GB 限制，其他文件使用传入的限制或默认 50MB。
+    if max_size is None:
+        max_size = MAX_VIDEO_SIZE if ext in _VIDEO_EXTENSIONS else MAX_UPLOAD_SIZE
     if file_size > max_size:
         size_mb = max_size / (1024 * 1024)
         return f"文件大小超过限制 ({size_mb:.0f}MB)"

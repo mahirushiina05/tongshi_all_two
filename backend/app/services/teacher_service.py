@@ -48,7 +48,7 @@ def get_teacher_stats(db: Session, teacher_id: str):
     }
 
 
-def list_students(db: Session, teacher_id: str, class_id: int = None, page: int = None, page_size: int = None):
+def list_students(db: Session, teacher_id: str, class_id: int = None, page: int = None, page_size: int = None, keyword: str = None):
     class_ids = _teacher_class_ids(db, teacher_id)
     if class_id:
         if class_id not in class_ids:
@@ -62,6 +62,10 @@ def list_students(db: Session, teacher_id: str, class_id: int = None, page: int 
         .filter(User.role == "student", StudentClassEnrollment.class_id.in_(class_ids))
         .distinct()
     )
+    if keyword:
+        query = query.filter(
+            (User.id.like(f"%{keyword}%")) | (User.name.like(f"%{keyword}%"))
+        )
     query = query.order_by(User.id)
     total = query.count()
     if page and page_size:

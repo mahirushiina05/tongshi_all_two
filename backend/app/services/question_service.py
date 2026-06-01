@@ -62,6 +62,10 @@ def delete_question(db: Session, question_id: int, teacher_id: str):
     q = get_question(db, question_id, teacher_id)
     if not q:
         return False
+    # 先删除关联的答题记录
+    from app.models.entities import QuizAttempt
+    db.query(QuizAttempt).filter(QuizAttempt.question_id == question_id).delete()
+    # 再删除题目
     db.delete(q)
     db.commit()
     return True

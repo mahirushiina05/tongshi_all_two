@@ -167,6 +167,22 @@ def reject_project(db: Session, project_id: int, reason: str):
     return project
 
 
+def delete_project(db: Session, project_id: int):
+    """删除作品及其关联数据"""
+    project = get_project(db, project_id)
+    if not project:
+        return None
+    # 删除关联的点赞记录
+    db.query(ProjectLike).filter(ProjectLike.project_id == project_id).delete()
+    # 删除关联的图片记录
+    db.query(ProjectImage).filter(ProjectImage.project_id == project_id).delete()
+    # 删除作品
+    db.delete(project)
+    db.commit()
+    logger.info("作品删除: project_id=%s, title=%s", project_id, project.title)
+    return project
+
+
 def format_project(db: Session, p) -> dict:
     """将 Project ORM 对象格式化为 API 响应 dict（唯一规范版本）。
 

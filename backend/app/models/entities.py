@@ -325,3 +325,21 @@ class ShowcaseItem(Base):
 
     cover_file = relationship("StoredFile", foreign_keys=[cover_file_id])
     creator = relationship("User", foreign_keys=[created_by])
+    images = relationship("ShowcaseItemImage", back_populates="showcase_item",
+                          cascade="all, delete-orphan", order_by="ShowcaseItemImage.sort_order")
+
+
+class ShowcaseItemImage(Base):
+    """悟页面图文内容的多张图片"""
+    __tablename__ = "showcase_item_images"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    showcase_item_id = Column(Integer, ForeignKey(
+        "showcase_items.id", ondelete="CASCADE"), nullable=False, index=True)
+    file_id = Column(Integer, ForeignKey(
+        "stored_files.id"), nullable=False)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    showcase_item = relationship("ShowcaseItem", back_populates="images")
+    file = relationship("StoredFile")

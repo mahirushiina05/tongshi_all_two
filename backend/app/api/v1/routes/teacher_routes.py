@@ -19,7 +19,8 @@ from app.core.response import success, paginated_success
 from app.core.exceptions import BusinessException
 from app.schemas.common import AuthUser, ProjectReviewAction
 from app.services.teacher_service import get_teacher_stats, list_students, list_all_projects
-from app.services.project_service import approve_project, reject_project, format_project
+from app.services.project_service import approve_project, reject_project, delete_project, format_project
+from app.services.class_service import _delete_student_data
 from app.services.file_service import resolve_file_stream
 from app.models.entities import User, Project, Class
 from openpyxl import Workbook
@@ -35,13 +36,53 @@ def teacher_stats(db: Session = Depends(get_db), current_user: AuthUser = Depend
 @router.get("/students", summary="学生成绩", description="教师端：返回所有学生的学号、姓名、专业、班级、学习进度和练习统计")
 def get_students(
     class_id: int = None,
+    keyword: str = None,
     page: int = 1,
     page_size: int = 20,
     db: Session = Depends(get_db),
     current_user: AuthUser = Depends(require_role("teacher")),
 ):
-    items, total = list_students(db, current_user.id, class_id, page, page_size)
+    items, total = list_students(db, current_user.id, class_id, page, page_size, keyword)
     return paginated_success(items, total, page, page_size)
+
+
+@router.post("/students/batch-delete", summary="批量删除学生", description="教师端：批量删除学生及其所有关联数据")
+def batch_delete_students(
+    student_ids: list[str],
+    db: Session = Depends(get_db),
+    current_user: AuthUser = Depends(require_role("teacher")),
+):
+    if not student_ids:
+        raise BusinessException(400, "请选择要删除的学生")
+
+    # 验证学生是否属于当前教师
+    teacher_student_ids = set()
+    from app.services.teacher_service import _teacher_student_ids
+    valid_ids = set(_teacher_student_ids(db, current_user.id))
+
+    deleted_count = 0
+    failed_ids = []
+
+    for student_id in student_ids:
+        if student_id not in valid_ids:
+            failed_ids.append(student_id)
+            continue
+        try:
+            _delete_student_data(db, student_id)
+            deleted_count += 1
+        except Exception:
+            failed_ids.append(student_id)
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise BusinessException(500, "批量删除失败")
+
+    return success({
+        "deleted_count": deleted_count,
+        "failed_ids": failed_ids,
+    })
 
 
 @router.get("/projects", summary="作品审核列表", description="教师端：按状态筛选所有学生作品，支持关键词搜索和分页")
@@ -76,6 +117,18 @@ def reject(
     current_user: AuthUser = Depends(require_role("teacher")),
 ):
     p = reject_project(db, project_id, data.reason or "")
+    if not p:
+        raise BusinessException(404, "作品不存在")
+    return success()
+
+
+@router.delete("/projects/{project_id}", summary="删除作品", description="教师端：删除指定作品及其所有关联数据")
+def remove_project(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: AuthUser = Depends(require_role("teacher")),
+):
+    p = delete_project(db, project_id)
     if not p:
         raise BusinessException(404, "作品不存在")
     return success()

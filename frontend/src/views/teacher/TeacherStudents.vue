@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getStudents, type Student } from '@/api/teacher'
@@ -50,7 +50,12 @@ const searchQuery = ref('')
 async function loadStudents() {
   loading.value = true
   try {
-    const res = await getStudents(selectedClassId.value || undefined, currentPage.value, pageSize.value)
+    const res = await getStudents(
+      selectedClassId.value || undefined,
+      currentPage.value,
+      pageSize.value,
+      searchQuery.value.trim() || undefined
+    )
     students.value = res.items
     total.value = res.total
   } catch {
@@ -65,18 +70,15 @@ function handleClassChange() {
   loadStudents()
 }
 
+function handleSearch() {
+  currentPage.value = 1
+  loadStudents()
+}
+
 function handlePageChange(page: number) {
   currentPage.value = page
   loadStudents()
 }
-
-const filteredStudents = computed(() => {
-  if (!searchQuery.value.trim()) return students.value
-  const q = searchQuery.value.trim().toLowerCase()
-  return students.value.filter(s =>
-    s.id.toLowerCase().includes(q) || s.name.toLowerCase().includes(q),
-  )
-})
 
 // Task completion
 const selectedAnnouncementId = ref<number | null>(null)
@@ -162,6 +164,8 @@ async function exportExcel() {
           size="default"
           style="width: 240px"
           clearable
+          @keyup.enter="handleSearch"
+          @clear="handleSearch"
         />
         <span class="filter-count">共 {{ total }} 名学生</span>
         <el-button
@@ -172,7 +176,7 @@ async function exportExcel() {
         >{{ selectedClassId ? '导出当前班级' : '导出全部学生' }}</el-button>
       </div>
 
-      <el-table :data="filteredStudents" stripe style="width: 100%" v-loading="loading">
+      <el-table :data="students" stripe style="width: 100%" v-loading="loading">
         <el-table-column prop="id" label="学号" width="120" />
         <el-table-column prop="name" label="姓名" width="100" />
         <el-table-column prop="major" label="专业" width="140" />
@@ -200,7 +204,7 @@ async function exportExcel() {
         </el-table-column>
       </el-table>
 
-      <div v-if="!loading && filteredStudents.length === 0" class="empty-state">
+      <div v-if="!loading && students.length === 0" class="empty-state">
         暂无学生成绩，请先导入学生或创建班级。
       </div>
 

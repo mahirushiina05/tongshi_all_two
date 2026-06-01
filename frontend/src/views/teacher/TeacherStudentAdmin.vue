@@ -3,6 +3,7 @@ import { onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { enrollStudent, getClasses, getClassStudents, importStudents, unenrollStudent, type ClassInfo, type ClassStudent } from '@/api/class'
+import { batchDeleteStudents } from '@/api/teacher'
 
 const route = useRoute()
 const classes = ref<ClassInfo[]>([])
@@ -16,6 +17,8 @@ const studentName = ref('')
 const importFile = ref<File | null>(null)
 const importInput = ref<HTMLInputElement | null>(null)
 const importing = ref(false)
+const selectedStudentIds = ref<string[]>([])
+const batchDeleting = ref(false)
 
 async function loadClasses() {
   classes.value = await getClasses()
@@ -24,11 +27,13 @@ async function loadClasses() {
 async function loadStudents() {
   if (typeof selectedClassId.value !== 'number') {
     students.value = []
+    selectedStudentIds.value = []
     return
   }
   loading.value = true
   try {
     students.value = await getClassStudents(selectedClassId.value)
+    selectedStudentIds.value = []
   } catch {
     ElMessage.error('学生列表加载失败')
   } finally {
@@ -72,6 +77,47 @@ async function handleUnenroll(row: ClassStudent) {
     await loadClasses()
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') ElMessage.error('移除失败，请稍后重试')
+  }
+}
+
+function handleSelectionChange(rows: ClassStudent[]) {
+  selectedStudentIds.value = rows.map(row => row.id)
+}
+
+async function handleBatchDelete() {
+  if (selectedStudentIds.value.length === 0) {
+    ElMessage.warning('请先选择要删除的学生')
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `确定删除选中的 ${selectedStudentIds.value.length} 名学生？该操作会删除学生账号及关联数据，不只是移出当前班级。`,
+      '确认批量删除',
+      {
+        type: 'warning',
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消',
+      },
+    )
+  } catch {
+    return
+  }
+
+  batchDeleting.value = true
+  try {
+    const result = await batchDeleteStudents(selectedStudentIds.value)
+    ElMessage.success(`成功删除 ${result.deleted_count} 名学生`)
+    if (result.failed_ids?.length > 0) {
+      ElMessage.warning(`${result.failed_ids.length} 名学生删除失败`)
+    }
+    selectedStudentIds.value = []
+    await loadStudents()
+    await loadClasses()
+  } catch {
+    ElMessage.error('批量删除失败，请稍后重试')
+  } finally {
+    batchDeleting.value = false
   }
 }
 
@@ -129,6 +175,15 @@ watch(selectedClassId, () => {
     <div class="page-header">
       <h1>学生管理</h1>
       <div class="actions">
+        <el-button
+          type="danger"
+          round
+          :disabled="selectedStudentIds.length === 0"
+          :loading="batchDeleting"
+          @click="handleBatchDelete"
+        >
+          批量删除{{ selectedStudentIds.length > 0 ? ` (${selectedStudentIds.length})` : '' }}
+        </el-button>
         <el-button round @click="openImport">Excel 导入</el-button>
         <el-button type="primary" round @click="openEnroll">手动添加</el-button>
       </div>
@@ -146,7 +201,8 @@ watch(selectedClassId, () => {
       <span class="filter-count">共 {{ students.length }} 名学生</span>
     </div>
 
-    <el-table :data="students" stripe style="width: 100%" v-loading="loading">
+    <el-table :data="students" stripe style="width: 100%" v-loading="loading" @selection-change="handleSelectionChange">
+      <el-table-column type="selection" width="50" />
       <el-table-column prop="id" label="学号" width="160" />
       <el-table-column prop="name" label="姓名" width="160" />
       <el-table-column prop="major" label="专业" min-width="180" />

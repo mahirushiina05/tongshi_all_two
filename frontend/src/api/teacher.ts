@@ -30,10 +30,15 @@ export function getTeacherStats() {
   return http.get<any, TeacherStats>('/teacher/stats')
 }
 
-export function getStudents(classId?: number, page = 1, pageSize = 20) {
+export function getStudents(classId?: number, page = 1, pageSize = 20, keyword?: string) {
   const params: Record<string, any> = { page, page_size: pageSize }
   if (classId) params.class_id = classId
+  if (keyword) params.keyword = keyword
   return http.get<any, PaginatedResult<Student>>('/teacher/students', { params })
+}
+
+export function batchDeleteStudents(studentIds: string[]) {
+  return http.post<any, { deleted_count: number; failed_ids: string[] }>('/teacher/students/batch-delete', studentIds)
 }
 
 export function getAllProjects(status?: string | null, keyword?: string, page = 1, pageSize = 20) {
@@ -49,6 +54,10 @@ export function approveProject(projectId: number) {
 
 export function rejectProject(projectId: number, reason: string) {
   return http.post<any, any>(`/teacher/projects/${projectId}/reject`, { reason })
+}
+
+export function deleteProject(projectId: number) {
+  return http.delete<any, any>(`/teacher/projects/${projectId}`)
 }
 
 function resolveDownloadFilename(disposition: string | null) {

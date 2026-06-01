@@ -7,7 +7,9 @@ import {
   createShowcaseItem,
   updateShowcaseItem,
   deleteShowcaseItem,
+  deleteShowcaseImage,
   type ShowcaseItemOut,
+  type ShowcaseItemImageOut,
 } from '../../api/showcase'
 
 const authStore = useAuthStore()
@@ -46,6 +48,10 @@ const form = ref({
 const coverFileId = ref<number | null>(null)
 const coverPreviewUrl = ref('')
 
+// 多图片相关
+const imageFileIds = ref<number[]>([])
+const imagePreviewUrls = ref<{ id: number; url: string }[]>([])
+
 // section 显示名称映射
 const sectionLabels: Record<string, string> = {
   welfare: '公益课社会价值',
@@ -79,6 +85,8 @@ const handleAdd = () => {
   }
   coverFileId.value = null
   coverPreviewUrl.value = ''
+  imageFileIds.value = []
+  imagePreviewUrls.value = []
   showDialog.value = true
 }
 
@@ -97,6 +105,9 @@ const handleEdit = (item: ShowcaseItemOut) => {
   // 编辑时显示现有封面，新上传后才替换
   coverFileId.value = null
   coverPreviewUrl.value = item.cover_url || ''
+  // 加载多图片数据
+  imageFileIds.value = item.images?.map(img => img.file_id) || []
+  imagePreviewUrls.value = item.images?.map(img => ({ id: img.id, url: img.url })) || []
   showDialog.value = true
 }
 
@@ -115,6 +126,7 @@ const handleSave = async () => {
         content: form.value.content.trim() || undefined,
         // 若新上传了图片则替换，否则不传（后端保留原图）
         ...(coverFileId.value !== null ? { cover_file_id: coverFileId.value } : {}),
+        image_file_ids: imageFileIds.value,
         link_url: form.value.link_url.trim() || undefined,
         sort_order: form.value.sort_order,
         is_active: form.value.is_active,
@@ -127,6 +139,7 @@ const handleSave = async () => {
         title: form.value.title.trim(),
         content: form.value.content.trim() || undefined,
         cover_file_id: coverFileId.value ?? null,
+        image_file_ids: imageFileIds.value,
         link_url: form.value.link_url.trim() || undefined,
         sort_order: form.value.sort_order,
       })
@@ -166,6 +179,41 @@ const handleUploadSuccess = (response: any) => {
 
 const handleUploadError = () => {
   ElMessage.error('封面上传失败，请检查图片格式或网络后重试')
+}
+
+// ── 多图片上传回调 ─────────────────────────────────────────────
+const handleImageUploadSuccess = (response: any) => {
+  if (response?.code === 0 && response?.data?.file_id) {
+    imageFileIds.value.push(response.data.file_id)
+    imagePreviewUrls.value.push({
+      id: response.data.file_id,
+      url: response.data.url || '',
+    })
+    ElMessage.success('图片上传成功')
+  } else {
+    ElMessage.error(response?.message || '图片上传失败，请重试')
+  }
+}
+
+const handleImageUploadError = () => {
+  ElMessage.error('图片上传失败，请检查图片格式或网络后重试')
+}
+
+// ── 删除已上传的图片 ───────────────────────────────────────────
+const handleRemoveImage = async (index: number) => {
+  const imageInfo = imagePreviewUrls.value[index]
+  if (!imageInfo) return
+  // 如果是编辑模式且图片已保存到后端，调用后端删除 API
+  if (isEdit.value && editId.value !== null && imageInfo.id != null && !imageFileIds.value.includes(imageInfo.id)) {
+    try {
+      await deleteShowcaseImage(editId.value, imageInfo.id)
+    } catch {
+      ElMessage.error('删除图片失败，请重试')
+      return
+    }
+  }
+  imageFileIds.value.splice(index, 1)
+  imagePreviewUrls.value.splice(index, 1)
 }
 
 // ── 工具函数 ───────────────────────────────────────────────────
@@ -364,6 +412,32 @@ onMounted(fetchItems)
             <el-button size="small">{{ coverPreviewUrl ? '重新上传封面' : '选择封面图片' }}</el-button>
             <template #tip>
               <div class="upload-tip">支持 jpg / png / gif，上传后立即生效</div>
+            </template>
+          </el-upload>
+        </el-form-item>
+
+        <!-- 多张图片 -->
+        <el-form-item label="内容图片">
+          <!-- 已上传图片预览列表 -->
+          <div v-if="imagePreviewUrls.length > 0" class="image-preview-list">
+            <div v-for="(img, index) in imagePreviewUrls" :key="index" class="image-preview-item">
+              <img :src="img.url" alt="图片预览" />
+              <span class="image-remove-btn" @click="handleRemoveImage(index)">×</span>
+            </div>
+          </div>
+          <!-- 上传控件 -->
+          <el-upload
+            :action="'/api/upload'"
+            :headers="uploadHeaders"
+            accept="image/*"
+            :show-file-list="false"
+            :on-success="handleImageUploadSuccess"
+            :on-error="handleImageUploadError"
+            multiple
+          >
+            <el-button size="small">选择图片（可多选）</el-button>
+            <template #tip>
+              <div class="upload-tip">支持 jpg / png / gif，可上传多张图片</div>
             </template>
           </el-upload>
         </el-form-item>
@@ -575,5 +649,49 @@ onMounted(fetchItems)
   margin-left: 10px;
   font-size: 0.78rem;
   color: var(--color-text-muted);
+}
+
+/* ── 多图片预览 ─────────────────────────────────────────────── */
+.image-preview-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.image-preview-item {
+  position: relative;
+  width: 120px;
+  height: 80px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+}
+
+.image-preview-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.image-remove-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.image-remove-btn:hover {
+  background: rgba(220, 53, 69, 0.9);
 }
 </style>

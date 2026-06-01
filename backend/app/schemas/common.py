@@ -351,6 +351,7 @@ class ShowcaseItemCreate(BaseModel):
     title: str = Field(min_length=1, max_length=128)
     content: str = ""
     cover_file_id: Optional[int] = None
+    image_file_ids: List[int] = Field(default_factory=list)
     link_url: str = ""
     sort_order: int = 0
 
@@ -360,9 +361,21 @@ class ShowcaseItemUpdate(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None
     cover_file_id: Optional[int] = None
+    image_file_ids: Optional[List[int]] = None
     link_url: Optional[str] = None
     sort_order: Optional[int] = None
     is_active: Optional[bool] = None
+
+
+class ShowcaseItemImageOut(BaseModel):
+    """图文内容图片输出"""
+    id: int
+    file_id: int
+    url: str = ""
+    sort_order: int = 0
+
+    class Config:
+        from_attributes = True
 
 
 class ShowcaseItemOut(BaseModel):
@@ -372,6 +385,7 @@ class ShowcaseItemOut(BaseModel):
     title: str
     content: str
     cover_url: str = ""
+    images: List[ShowcaseItemImageOut] = Field(default_factory=list)
     link_url: str = ""
     sort_order: int = 0
     is_active: bool = True
