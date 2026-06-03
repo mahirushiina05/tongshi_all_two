@@ -9,7 +9,7 @@ const writableCourses = ref<Course[]>([])
 const questions = ref<Question[]>([])
 const loading = ref(true)
 const filterCourse = ref<number | ''>('')
-const filterType = ref<'' | 'choice' | 'fill'>('')
+const filterType = ref<'' | 'choice' | 'fill' | 'multi_choice'>('')
 const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 const importDialogVisible = ref(false)
@@ -19,7 +19,7 @@ const importing = ref(false)
 
 const form = reactive({
   course_id: '' as number | '',
-  type: 'choice' as 'choice' | 'fill',
+  type: 'choice' as 'choice' | 'fill' | 'multi_choice',
   stem: '',
   options: ['', '', '', ''],
   answer: '',
@@ -92,7 +92,7 @@ async function handleSave() {
     course_id: form.course_id,
     type: form.type,
     stem: form.stem.trim(),
-    options: form.type === 'choice' ? form.options.map(item => item.trim()).filter(Boolean) : [],
+    options: form.type === 'choice' || form.type === 'multi_choice' ? form.options.map(item => item.trim()).filter(Boolean) : [],
     answer: form.answer.trim(),
     explanation: form.explanation.trim(),
   }
@@ -198,6 +198,7 @@ onMounted(async () => {
       </el-select>
       <el-select v-model="filterType" placeholder="全部题型" clearable style="width: 140px" @change="loadQuestions">
         <el-option label="选择题" value="choice" />
+        <el-option label="多选题" value="multi_choice" />
         <el-option label="填空题" value="fill" />
       </el-select>
       <el-button @click="resetFilter">重置</el-button>
@@ -209,6 +210,7 @@ onMounted(async () => {
       <el-table-column label="题干" min-width="260">
         <template #default="{ row }">
           <span>{{ row.stem.length > 48 ? row.stem.slice(0, 48) + '…' : row.stem }}</span>
+          <span v-if="row.type === 'multi_choice'" class="multi-tag">（多选题）</span>
           <el-tag v-if="row.is_synced" class="synced-tag" size="small" type="info" effect="plain">
             公共同步
           </el-tag>
@@ -216,8 +218,8 @@ onMounted(async () => {
       </el-table-column>
       <el-table-column label="题型" width="100">
         <template #default="{ row }">
-          <el-tag :type="row.type === 'choice' ? '' : 'success'" size="small" effect="plain">
-            {{ row.type === 'choice' ? '选择题' : '填空题' }}
+          <el-tag :type="row.type === 'choice' ? '' : row.type === 'multi_choice' ? 'warning' : 'success'" size="small" effect="plain">
+            {{ row.type === 'choice' ? '选择题' : row.type === 'multi_choice' ? '多选题' : '填空题' }}
           </el-tag>
         </template>
       </el-table-column>
@@ -246,6 +248,7 @@ onMounted(async () => {
         <label>题型</label>
         <el-radio-group v-model="form.type" size="large">
           <el-radio-button value="choice">选择题</el-radio-button>
+          <el-radio-button value="multi_choice">多选题</el-radio-button>
           <el-radio-button value="fill">填空题</el-radio-button>
         </el-radio-group>
       </div>
@@ -253,7 +256,7 @@ onMounted(async () => {
         <label>题干</label>
         <el-input v-model="form.stem" type="textarea" :rows="3" placeholder="请输入题目内容" />
       </div>
-      <div v-if="form.type === 'choice'" class="form-group">
+      <div v-if="form.type === 'choice' || form.type === 'multi_choice'" class="form-group">
         <label>选项</label>
         <div v-for="(_, index) in form.options" :key="index" class="option-row">
           <span class="option-label">{{ ['A', 'B', 'C', 'D'][index] }}</span>
@@ -262,7 +265,7 @@ onMounted(async () => {
       </div>
       <div class="form-group">
         <label>答案</label>
-        <el-input v-model="form.answer" placeholder="选择题填 A/B/C/D，填空题填关键词" size="large" />
+        <el-input v-model="form.answer" placeholder="选择题填 A/B/C/D，多选题填 AC/BD 等，填空题填关键词" size="large" />
       </div>
       <div class="form-group">
         <label>解析</label>
@@ -368,8 +371,15 @@ onMounted(async () => {
   text-align: center;
 }
 
-.synced-tag {
+.synced-tag,
+.multi-tag {
   margin-left: var(--space-sm);
+}
+
+.multi-tag {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #d97706;
 }
 
 .readonly-text {

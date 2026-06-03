@@ -8,7 +8,7 @@ export interface Course {
 
 export interface Question {
   id: number
-  type: 'choice' | 'fill'
+  type: 'choice' | 'fill' | 'multi_choice'
   course_id: number
   course_name: string
   stem: string

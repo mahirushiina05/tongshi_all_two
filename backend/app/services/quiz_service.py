@@ -12,7 +12,10 @@ def submit_answer(db: Session, user_id: str, question_id: int, user_answer: str)
     if not question:
         return None
 
-    is_correct = user_answer.strip().upper() == question.answer.strip().upper()
+    if question.type == "multi_choice":
+        is_correct = ''.join(sorted(user_answer.strip().upper())) == ''.join(sorted(question.answer.strip().upper()))
+    else:
+        is_correct = user_answer.strip().upper() == question.answer.strip().upper()
     attempt = QuizAttempt(
         user_id=user_id,
         question_id=question_id,

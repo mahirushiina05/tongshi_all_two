@@ -41,7 +41,7 @@ def build_course_list(db: Session, current_user: AuthUser):
             .all()
         )
         if not enrollments:
-            return {"courses": [], "hint": "你尚未加入任何班级，请联系老师"}
+            return []
 
         class_ids = [item.class_id for item in enrollments]
         classes_with_course = (
@@ -50,14 +50,11 @@ def build_course_list(db: Session, current_user: AuthUser):
             .all()
         )
         if not classes_with_course:
-            return {"courses": [], "hint": "你的班级尚未分配课程，请联系老师"}
+            return []
 
         course_ids = list({item.course_id for item in classes_with_course})
         courses = db.query(Course).filter(Course.id.in_(course_ids)).order_by(Course.id.desc()).all()
-        return {
-            "courses": [_format_course(db, course, current_user) for course in courses],
-            "hint": None,
-        }
+        return [_format_course(db, course, current_user) for course in courses]
 
     courses = list_courses(db)
     return [_format_course(db, course, current_user) for course in courses]

@@ -8,8 +8,6 @@ for backward compatibility; both call the same service functions.
 """
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -17,77 +15,23 @@ from app.db.session import get_db
 from app.core.security import get_current_user, require_role
 from app.core.response import success
 from app.core.exceptions import BusinessException
-from app.core.timezone_utils import to_beijing_iso
 from app.schemas.common import AuthUser, CourseCreateRequest, CourseUpdateRequest
 from app.services.question_service import (
-    list_courses,
     create_course,
     update_course,
     delete_course,
     get_course_detail,
     add_public_course,
 )
-from app.models.entities import Class, Course, StudentClassEnrollment
+from app.services.course_response_service import build_course_list, build_course_detail
 
 router = APIRouter(prefix="/courses", tags=["courses"])
 
 
 @router.get("", summary="课程列表", description="获取所有课程（学生按班级关联，教师按归属）")
 def get_courses(db: Session = Depends(get_db), current_user: AuthUser = Depends(get_current_user)):
-    if current_user.role == "teacher":
-        courses = list_courses(db, current_user.id)
-        return success([{
-            "id": c.id,
-            "name": c.name,
-            "created_at": to_beijing_iso(c.created_at),
-            "material_count": len(c.materials),
-            "question_count": len(c.questions),
-            "class_count": len(c.classes),
-        } for c in courses])
-    elif current_user.role == "student":
-        enrollments = (
-            db.query(StudentClassEnrollment)
-            .filter(StudentClassEnrollment.user_id == current_user.id)
-            .all()
-        )
-        if not enrollments:
-            return success({"courses": [], "hint": "你尚未加入任何班级，请联系老师"})
-        class_ids = [e.class_id for e in enrollments]
-        classes_with_course = (
-            db.query(Class)
-            .filter(Class.id.in_(class_ids), Class.course_id.isnot(None))
-            .all()
-        )
-        if not classes_with_course:
-            return success({"courses": [], "hint": "你的班级尚未分配课程，请联系老师"})
-        course_ids = list({c.course_id for c in classes_with_course})
-        courses = (
-            db.query(Course)
-            .filter(Course.id.in_(course_ids))
-            .order_by(Course.id.desc())
-            .all()
-        )
-        return success({
-            "courses": [{
-                "id": c.id,
-                "name": c.name,
-                "created_at": to_beijing_iso(c.created_at),
-                "material_count": len(c.materials),
-                "question_count": len(c.questions),
-                "class_count": len(c.classes),
-            } for c in courses],
-            "hint": None,
-        })
-    else:
-        courses = list_courses(db)
-        return success([{
-            "id": c.id,
-            "name": c.name,
-            "created_at": to_beijing_iso(c.created_at),
-            "material_count": len(c.materials),
-            "question_count": len(c.questions),
-            "class_count": len(c.classes),
-        } for c in courses])
+    result = build_course_list(db, current_user)
+    return success(result)
 
 
 @router.post("", summary="创建课程", description="教师端：创建新课程")
@@ -112,15 +56,7 @@ def get_course(
     detail = get_course_detail(db, course_id, teacher_id)
     if not detail:
         raise BusinessException(404, "课程不存在")
-    course, material_count, question_count, class_count = detail
-    return success({
-        "id": course.id,
-        "name": course.name,
-        "created_at": to_beijing_iso(course.created_at),
-        "material_count": material_count,
-        "question_count": question_count,
-        "class_count": class_count,
-    })
+    return success(build_course_detail(db, detail, current_user))
 
 
 @router.put("/{course_id}", summary="修改课程名称", description="教师端：修改指定课程的名称")
