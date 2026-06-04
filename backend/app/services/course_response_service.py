@@ -29,9 +29,9 @@ def _format_course(db: Session, course: Course, current_user: AuthUser, class_co
     }
 
 
-def build_course_list(db: Session, current_user: AuthUser):
+def build_course_list(db: Session, current_user: AuthUser, keyword: str | None = None):
     if current_user.role == "teacher":
-        courses = list_courses(db, current_user.id)
+        courses = list_courses(db, current_user.id, keyword)
         return [_format_course(db, course, current_user) for course in courses]
 
     if current_user.role == "student":
@@ -53,13 +53,16 @@ def build_course_list(db: Session, current_user: AuthUser):
             return {"courses": [], "hint": "你的班级尚未分配课程，请联系老师"}
 
         course_ids = list({item.course_id for item in classes_with_course})
-        courses = db.query(Course).filter(Course.id.in_(course_ids)).order_by(Course.id.desc()).all()
+        query = db.query(Course).filter(Course.id.in_(course_ids))
+        if keyword:
+            query = query.filter(Course.name.contains(keyword))
+        courses = query.order_by(Course.id.desc()).all()
         return {
             "courses": [_format_course(db, course, current_user) for course in courses],
             "hint": None,
         }
 
-    courses = list_courses(db)
+    courses = list_courses(db, keyword=keyword)
     return [_format_course(db, course, current_user) for course in courses]
 
 

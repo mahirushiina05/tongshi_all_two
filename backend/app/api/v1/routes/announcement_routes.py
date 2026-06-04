@@ -69,9 +69,23 @@ def complete(announcement_id: int, db: Session = Depends(get_db), current_user: 
     return success()
 
 
-@router.get("/{announcement_id}/completion-report", summary="获取完成报告", description="教师端：查询指定任务的完成统计（已完成/未完成学生列表 + 是否超时）")
-def report(announcement_id: int, db: Session = Depends(get_db), current_user: AuthUser = Depends(require_role("teacher"))):
-    data = completion_report(db, announcement_id, current_user.id)
+@router.get("/{announcement_id}/completion-report", summary="获取完成报告", description="教师端：查询指定任务的完成统计（已完成/未完成学生列表 + 是否超时），支持分页")
+def report(
+    announcement_id: int,
+    class_id: int | None = None,
+    completed_page: int = 1,
+    completed_page_size: int = 20,
+    incomplete_page: int = 1,
+    incomplete_page_size: int = 20,
+    db: Session = Depends(get_db),
+    current_user: AuthUser = Depends(require_role("teacher")),
+):
+    data = completion_report(
+        db, announcement_id, current_user.id,
+        class_id,
+        completed_page, completed_page_size,
+        incomplete_page, incomplete_page_size,
+    )
     if not data:
         raise BusinessException(404, "题目任务不存在")
     return success(data)

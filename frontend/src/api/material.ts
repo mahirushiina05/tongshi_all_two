@@ -1,4 +1,5 @@
 ﻿import http from './http'
+import type { PaginatedResult } from './question'
 
 export interface Material {
   id: number
@@ -25,12 +26,19 @@ export interface MaterialCreatePayload {
   file_id?: number
 }
 
-export function getAllMaterials(params?: { course_id?: number }) {
-  return http.get<any, Material[]>('/materials', { params })
+export function getAllMaterials(params?: {
+  course_id?: number
+  keyword?: string
+  page?: number
+  page_size?: number
+}) {
+  return http.get<any, PaginatedResult<Material>>('/materials', { params })
 }
 
-export function getCourseContents(courseId: number) {
-  return http.get<any, Material[]>(`/courses/${courseId}/contents`)
+export function getCourseContents(courseId: number, keyword?: string) {
+  return http.get<any, Material[]>(`/courses/${courseId}/contents`, {
+    params: keyword ? { keyword } : undefined,
+  })
 }
 
 export function createMaterial(data: MaterialCreatePayload) {

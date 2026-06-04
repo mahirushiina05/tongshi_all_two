@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { createMaterial, deleteMaterial, getAllMaterials, type Material } from '@/api/material'
 import { getCourses, type Course } from '@/api/course'
-import { uploadFile } from '@/api/upload'
+import { useUploadWithProgress } from '@/composables/useUploadWithProgress'
 import { resolveFileUrl } from '@/utils/url'
 
 const route = useRoute()
@@ -12,9 +12,13 @@ const materials = ref<Material[]>([])
 const courses = ref<Course[]>([])
 const loading = ref(true)
 const filterCourse = ref<number | ''>('')
+const filterKeyword = ref('')
+const page = ref(1)
+const pageSize = ref(20)
+const total = ref(0)
 const dialogVisible = ref(false)
-const uploading = ref(false)
 const uploadInput = ref<HTMLInputElement | null>(null)
+const { uploading, percent: uploadPercent, upload } = useUploadWithProgress()
 
 const form = reactive<{
   course_id: number | ''
@@ -48,12 +52,24 @@ async function loadCourses() {
 async function loadMaterials() {
   loading.value = true
   try {
-    materials.value = await getAllMaterials(filterCourse.value ? { course_id: filterCourse.value } : undefined)
+    const result = await getAllMaterials({
+      course_id: filterCourse.value || undefined,
+      keyword: filterKeyword.value || undefined,
+      page: page.value,
+      page_size: pageSize.value,
+    })
+    materials.value = result.items
+    total.value = result.total
   } catch {
     ElMessage.error('资料数据加载失败，请稍后重试')
   } finally {
     loading.value = false
   }
+}
+
+function handlePageChange(newPage: number) {
+  page.value = newPage
+  loadMaterials()
 }
 
 function resetForm() {
@@ -97,9 +113,8 @@ async function handleUpload() {
     return
   }
 
-  uploading.value = true
   try {
-    const uploaded = await uploadFile(form.file)
+    const uploaded = await upload(form.file, 'material')
     await createMaterial({
       course_id: form.course_id,
       type: form.type,
@@ -113,14 +128,12 @@ async function handleUpload() {
     await loadMaterials()
   } catch {
     ElMessage.error('上传失败，请检查文件后重试')
-  } finally {
-    uploading.value = false
   }
 }
 
 async function handleDelete(row: Material) {
   try {
-    await ElMessageBox.confirm(`确定删除资料“${row.title}”？`, '删除确认', { type: 'warning' })
+    await ElMessageBox.confirm(`确定删除资料"${row.title}"？`, '删除确认', { type: 'warning' })
     await deleteMaterial(row.id)
     materials.value = materials.value.filter(item => item.id !== row.id)
     ElMessage.success('已删除')
@@ -141,6 +154,7 @@ onMounted(async () => {
 })
 
 watch(filterCourse, () => {
+  page.value = 1
   loadMaterials()
 })
 </script>
@@ -153,10 +167,11 @@ watch(filterCourse, () => {
     </div>
 
     <div class="filter-bar">
+      <el-input v-model="filterKeyword" placeholder="搜索资料标题" clearable style="width: 200px" @keyup.enter="page = 1; loadMaterials()" @clear="page = 1; loadMaterials()" />
       <el-select v-model="filterCourse" placeholder="全部课程" clearable style="width: 240px">
         <el-option v-for="course in courses" :key="course.id" :label="course.name" :value="course.id" />
       </el-select>
-      <span class="filter-count">共 {{ materials.length }} 条资料</span>
+      <span class="filter-count">共 {{ total }} 条资料</span>
     </div>
 
     <el-table :data="materials" stripe style="width: 100%" v-loading="loading">
@@ -187,7 +202,18 @@ watch(filterCourse, () => {
     </el-table>
 
     <div v-if="!loading && materials.length === 0" class="empty-state">
-      暂无资料，点击“上传资料”添加视频课件或 PDF 讲义。
+      暂无资料，点击"上传资料"添加视频课件或 PDF 讲义。
+    </div>
+
+    <div v-if="total > pageSize" class="pagination-wrap">
+      <el-pagination
+        background
+        layout="prev, pager, next"
+        :total="total"
+        :page-size="pageSize"
+        :current-page="page"
+        @current-change="handlePageChange"
+      />
     </div>
 
     <el-dialog v-model="dialogVisible" title="上传资料" width="480px">
@@ -215,6 +241,7 @@ watch(filterCourse, () => {
           <span v-if="!form.file">点击选择要上传的文件</span>
           <span v-else class="file-name">{{ form.file.name }}</span>
         </div>
+        <el-progress v-if="uploading" :percentage="uploadPercent" style="margin-top: 12px" />
       </div>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>

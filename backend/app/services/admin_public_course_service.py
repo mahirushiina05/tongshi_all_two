@@ -24,6 +24,34 @@ def list_public_courses(db: Session) -> list[Course]:
     return db.query(Course).filter(Course.is_public.is_(True)).order_by(Course.id.desc()).all()
 
 
+def get_course_sync_status(db: Session, course: Course) -> dict:
+    """计算公共课程的同步状态摘要。"""
+    copies = db.query(Course).filter(Course.source_course_id == course.id).all()
+    sync_copy_count = len(copies)
+    synced_material_count = db.query(Material).filter(
+        Material.source_material_id.in_([m.id for m in course.materials])
+    ).count() if course.materials else 0
+    synced_question_count = db.query(Question).filter(
+        Question.source_question_id.in_([q.id for q in course.questions])
+    ).count() if course.questions else 0
+
+    total_items = len(course.materials) + len(course.questions)
+    synced_items = synced_material_count + synced_question_count
+    if total_items == 0 or sync_copy_count == 0:
+        sync_status = "not_synced"
+    elif synced_items >= total_items * sync_copy_count:
+        sync_status = "synced"
+    else:
+        sync_status = "partial"
+
+    return {
+        "sync_copy_count": sync_copy_count,
+        "synced_material_count": synced_material_count,
+        "synced_question_count": synced_question_count,
+        "sync_status": sync_status,
+    }
+
+
 def create_public_course(db: Session, name: str, admin_id: str) -> Course:
     if db.query(Course).filter(Course.name == name, Course.created_by == admin_id).first():
         raise BusinessException(400, "公共课程已存在")

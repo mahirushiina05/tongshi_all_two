@@ -19,8 +19,21 @@ export interface Question {
   is_synced?: boolean
 }
 
-export function getQuestions(params?: { type?: string; course_id?: number }) {
-  return http.get<any, Question[]>('/questions', { params })
+export interface PaginatedResult<T> {
+  items: T[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export function getQuestions(params?: {
+  type?: string
+  course_id?: number
+  keyword?: string
+  page?: number
+  page_size?: number
+}) {
+  return http.get<any, PaginatedResult<Question>>('/questions', { params })
 }
 
 export function getCourseQuestions(courseId: number) {

@@ -1,4 +1,5 @@
 import http from './http'
+import type { PaginatedResult } from './question'
 
 export interface Course {
   id: number
@@ -18,11 +19,22 @@ export interface CourseListResult {
   hint: string | null
 }
 
-export function getCourses() {
-  return http.get<any, Course[] | CourseListResult>('/courses').then(data => {
+export function getCourses(keyword?: string) {
+  return http.get<any, Course[] | CourseListResult>('/courses', {
+    params: keyword ? { keyword } : undefined,
+  }).then(data => {
     if (Array.isArray(data)) return data
     return data.courses
   })
+}
+
+export function getCoursesPage(params: {
+  keyword?: string
+  page?: number
+  page_size?: number
+  scope?: 'owned' | 'public' | 'all'
+}) {
+  return http.get<any, PaginatedResult<Course>>('/courses', { params })
 }
 
 export function getCourseDetail(id: number) {

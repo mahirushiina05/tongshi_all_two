@@ -2,7 +2,7 @@
 import re
 from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 # ── Auth ────────────────────────────────────────────────────────────────────
@@ -43,15 +43,14 @@ class RegisterRequest(BaseModel):
 
 # ── Class ───────────────────────────────────────────────────────────────────
 class ClassOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     name: str
     course_id: int
     course_name: str = ""
     student_count: int = 0
     created_at: Optional[str] = None
-
-    class Config:
-        from_attributes = True
 
 
 class ClassCreate(BaseModel):
@@ -100,6 +99,8 @@ class CourseUpdateRequest(BaseModel):
 
 # ── Material ────────────────────────────────────────────────────────────────
 class MaterialOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     course_id: int
     course_name: str = ""
@@ -114,9 +115,6 @@ class MaterialOut(BaseModel):
     source_material_id: Optional[int] = None
     is_synced: bool = False
 
-    class Config:
-        from_attributes = True
-
 
 class MaterialCreate(BaseModel):
     course_id: int
@@ -129,6 +127,8 @@ class MaterialCreate(BaseModel):
 
 # ── Question ────────────────────────────────────────────────────────────────
 class QuestionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     type: str
     course_id: int
@@ -139,9 +139,6 @@ class QuestionOut(BaseModel):
     explanation: str = ""
     source_question_id: Optional[int] = None
     is_synced: bool = False
-
-    class Config:
-        from_attributes = True
 
 
 class QuestionCreate(BaseModel):
@@ -192,6 +189,8 @@ class QuizSubmitRequest(BaseModel):
 
 
 class QuizAttemptOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     question_id: int
     user_answer: str
@@ -199,9 +198,6 @@ class QuizAttemptOut(BaseModel):
     correct_answer: str = ""
     explanation: str = ""
     answered_at: str = ""
-
-    class Config:
-        from_attributes = True
 
 
 class QuizStatsOut(BaseModel):
@@ -218,17 +214,18 @@ class CourseQuizStatsOut(BaseModel):
 
 
 class ProjectImageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: Optional[int] = None
     image_url: str = ""
     sort_order: int = 0
     file_id: Optional[int] = None
 
-    class Config:
-        from_attributes = True
-
 
 # ── Project ─────────────────────────────────────────────────────────────────
 class ProjectOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     title: str
     author_id: str
@@ -248,9 +245,6 @@ class ProjectOut(BaseModel):
     date: str = ""
     report_file_id: Optional[int] = None
     cover_file_id: Optional[int] = None
-
-    class Config:
-        from_attributes = True
 
 
 class ProjectCreate(BaseModel):
@@ -471,17 +465,18 @@ class ShowcaseItemUpdate(BaseModel):
 
 class ShowcaseItemImageOut(BaseModel):
     """图文内容图片输出"""
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     file_id: int
     url: str = ""
     sort_order: int = 0
 
-    class Config:
-        from_attributes = True
-
 
 class ShowcaseItemOut(BaseModel):
     """图文内容输出"""
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     section: str
     title: str
@@ -492,6 +487,3 @@ class ShowcaseItemOut(BaseModel):
     sort_order: int = 0
     is_active: bool = True
     created_at: datetime
-
-    class Config:
-        from_attributes = True

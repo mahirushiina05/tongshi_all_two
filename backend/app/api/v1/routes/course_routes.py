@@ -8,12 +8,14 @@ for backward compatibility; both call the same service functions.
 """
 from __future__ import annotations
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.core.security import get_current_user, require_role
-from app.core.response import success
+from app.core.response import success, paginated_success
 from app.core.exceptions import BusinessException
 from app.schemas.common import AuthUser, CourseCreateRequest, CourseUpdateRequest
 from app.services.question_service import (
@@ -28,11 +30,28 @@ from app.services.course_response_service import build_course_detail, build_cour
 router = APIRouter(prefix="/courses", tags=["courses"])
 
 
-@router.get("", summary="课程列表", description="获取所有课程（学生按班级关联，教师按归属）")
-def get_courses(db: Session = Depends(get_db), current_user: AuthUser = Depends(get_current_user)):
-    data = build_course_list(db, current_user)
+@router.get("", summary="课程列表", description="获取所有课程（学生按班级关联，教师按归属），支持关键词搜索")
+def get_courses(
+    keyword: Optional[str] = None,
+    page: Optional[int] = None,
+    page_size: int = 20,
+    scope: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: AuthUser = Depends(get_current_user),
+):
+    data = build_course_list(db, current_user, keyword)
     if current_user.role == "student" and isinstance(data, dict) and data.get("hint") is None:
         return success(data["courses"])
+    if page is not None and isinstance(data, list):
+        items = data
+        if scope == "owned":
+            items = [item for item in items if item.get("is_owner")]
+        elif scope == "public":
+            items = [item for item in items if item.get("is_public") and not item.get("is_owner")]
+        safe_page = max(page, 1)
+        safe_page_size = max(min(page_size, 100), 1)
+        start = (safe_page - 1) * safe_page_size
+        return paginated_success(items[start:start + safe_page_size], len(items), safe_page, safe_page_size)
     return success(data)
 
 

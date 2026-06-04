@@ -21,8 +21,8 @@ from app.services import admin_public_course_service as service
 router = APIRouter(prefix="/public-courses", tags=["admin-public-courses"])
 
 
-def _format_course(course) -> dict:
-    return {
+def _format_course(course, sync_info: dict | None = None) -> dict:
+    data = {
         "id": course.id,
         "name": course.name,
         "created_at": course.created_at.isoformat() if course.created_at else "",
@@ -31,6 +31,9 @@ def _format_course(course) -> dict:
         "material_count": len(course.materials),
         "question_count": len(course.questions),
     }
+    if sync_info:
+        data.update(sync_info)
+    return data
 
 
 def _format_material(material) -> dict:
@@ -66,12 +69,17 @@ def _format_question(question) -> dict:
     }
 
 
-@router.get("", summary="公共课程列表", description="管理员：获取所有公共课程")
+@router.get("", summary="公共课程列表", description="管理员：获取所有公共课程，含同步状态摘要")
 def get_public_courses(
     db: Session = Depends(get_db),
     _: AuthUser = Depends(require_role("admin")),
 ):
-    return success([_format_course(course) for course in service.list_public_courses(db)])
+    courses = service.list_public_courses(db)
+    result = []
+    for course in courses:
+        sync_info = service.get_course_sync_status(db, course)
+        result.append(_format_course(course, sync_info))
+    return success(result)
 
 
 @router.post("", summary="创建公共课程", description="管理员：创建公共课程")

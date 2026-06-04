@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getCourseQuestions, type Question } from '@/api/question'
 import { submitAnswer as apiSubmitAnswer } from '@/api/quiz'
+import { loadQuizDraft, saveQuizDraft, clearQuizDraft } from '@/composables/useQuizDraft'
 
 const route = useRoute()
 const router = useRouter()
@@ -28,24 +29,50 @@ const submitted = ref(false)
 const answers = ref<(string | null)[]>([])
 const results = ref<(boolean | null)[]>([])
 
+// 加载题目后尝试恢复草稿
 watch(mockQuestions, (qs) => {
-  answers.value = qs.map(() => null)
-  results.value = qs.map(() => null)
+  if (!qs.length) return
+  const draft = loadQuizDraft(courseId.value)
+  if (draft && draft.courseId === courseId.value) {
+    // 恢复已答状态
+    const restoredAnswers: (string | null)[] = qs.map(() => null)
+    const restoredResults: (boolean | null)[] = qs.map(() => null)
+    qs.forEach((q, idx) => {
+      if (draft.answeredQuestionIds.includes(q.id) && draft.answers[q.id] !== undefined) {
+        restoredAnswers[idx] = draft.answers[q.id] ?? null
+        restoredResults[idx] = draft.results?.[q.id] ?? null
+      }
+    })
+    answers.value = restoredAnswers
+    results.value = restoredResults
+    // 恢复到上次题目位置
+    if (draft.currentQuestionId) {
+      const idx = qs.findIndex(q => q.id === draft.currentQuestionId)
+      if (idx >= 0) currentIndex.value = idx
+    }
+    resetState()
+  } else {
+    answers.value = qs.map(() => null)
+    results.value = qs.map(() => null)
+    currentIndex.value = 0
+    resetState()
+  }
 })
 
-const currentQuestion = computed((): Question => mockQuestions.value[currentIndex.value]!)
+const currentQuestion = computed((): Question | null => mockQuestions.value[currentIndex.value] ?? null)
 const totalQuestions = computed(() => mockQuestions.value.length)
-const progress = computed(() => Math.round(((currentIndex.value + 1) / totalQuestions.value) * 100))
-const allDone = computed(() => results.value.every(r => r !== null))
+const progress = computed(() => totalQuestions.value > 0 ? Math.round(((currentIndex.value + 1) / totalQuestions.value) * 100) : 0)
+const allDone = computed(() => totalQuestions.value > 0 && results.value.every(r => r !== null))
 
 const optionLabels = ['A', 'B', 'C', 'D']
-const optionItems = computed(() => currentQuestion.value.options.map((text, index) => ({
+const optionItems = computed(() => (currentQuestion.value?.options ?? []).map((text, index) => ({
   label: optionLabels[index] ?? String.fromCharCode(65 + index),
   text,
 })))
 
 async function submitAnswer() {
   const q = currentQuestion.value
+  if (!q) return
   let userAnswer: string
   if (q.type === 'multi_choice') {
     if (selectedOptions.value.size === 0) return
@@ -61,12 +88,18 @@ async function submitAnswer() {
   answers.value[currentIndex.value] = userAnswer
   results.value[currentIndex.value] = result.is_correct
   submitted.value = true
+  persistDraft()
+  // 全部完成时清理草稿
+  if (results.value.every(r => r !== null)) {
+    clearQuizDraft(courseId.value)
+  }
 }
 
 function nextQuestion() {
   if (currentIndex.value < totalQuestions.value - 1) {
     currentIndex.value++
     resetState()
+    persistDraft()
   }
 }
 
@@ -74,24 +107,28 @@ function prevQuestion() {
   if (currentIndex.value > 0) {
     currentIndex.value--
     resetState()
+    persistDraft()
   }
 }
 
 function goToQuestion(index: number) {
   currentIndex.value = index
   resetState()
+  persistDraft()
 }
 
 function resetState() {
+  const q = currentQuestion.value
+  if (!q) return
   const idx = currentIndex.value
   if (results.value[idx] !== null) {
     submitted.value = true
     const answer = answers.value[idx] ?? ''
-    if (currentQuestion.value.type === 'multi_choice') {
+    if (q.type === 'multi_choice') {
       selectedOptions.value = new Set(answer ? answer.split('') : [])
     }
-    selectedOption.value = currentQuestion.value.type === 'choice' ? answer : null
-    fillAnswer.value = currentQuestion.value.type === 'fill' ? answer : ''
+    selectedOption.value = q.type === 'choice' ? answer : null
+    fillAnswer.value = q.type === 'fill' ? answer : ''
   } else {
     submitted.value = false
     selectedOption.value = null
@@ -116,6 +153,31 @@ function toggleMultiOption(label: string) {
 }
 
 const correctCount = computed(() => results.value.filter(r => r === true).length)
+
+/** 保存当前答题草稿到 localStorage */
+function persistDraft() {
+  const qs = mockQuestions.value
+  const answeredIds: number[] = []
+  const answersMap: Record<number, string> = {}
+  const resultsMap: Record<number, boolean> = {}
+  qs.forEach((q, idx) => {
+    if (answers.value[idx] !== null) {
+      answeredIds.push(q.id)
+      answersMap[q.id] = answers.value[idx]!
+      if (results.value[idx] !== null) {
+        resultsMap[q.id] = results.value[idx]!
+      }
+    }
+  })
+  saveQuizDraft({
+    courseId: courseId.value,
+    currentQuestionId: qs[currentIndex.value]?.id ?? null,
+    answeredQuestionIds: answeredIds,
+    answers: answersMap,
+    results: resultsMap,
+    updatedAt: Date.now(),
+  })
+}
 </script>
 
 <template>
@@ -139,7 +201,27 @@ const correctCount = computed(() => results.value.filter(r => r === true).length
     </section>
 
     <!-- All done summary -->
-    <section v-if="allDone" class="summary-section">
+    <section v-if="loading" class="summary-section">
+      <div class="container">
+        <div class="summary-card">
+          <h2>题目加载中...</h2>
+        </div>
+      </div>
+    </section>
+
+    <section v-else-if="totalQuestions === 0" class="summary-section">
+      <div class="container">
+        <div class="summary-card">
+          <h2>暂无可练习题目</h2>
+          <p class="summary-text">该课程暂未配置题目，请稍后再试。</p>
+          <div class="summary-actions">
+            <button class="btn-retry" @click="router.push('/practice')">返回练习列表</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section v-else-if="allDone" class="summary-section">
       <div class="container">
         <div class="summary-card">
           <div class="summary-icon">
@@ -153,7 +235,7 @@ const correctCount = computed(() => results.value.filter(r => r === true).length
             <span class="score-sep">/</span>
             <span class="score-total">{{ totalQuestions }}</span>
           </div>
-          <p class="summary-text">正确率 {{ Math.round(correctCount / totalQuestions * 100) }}%</p>
+          <p class="summary-text">正确率 {{ totalQuestions > 0 ? Math.round(correctCount / totalQuestions * 100) : 0 }}%</p>
           <div class="summary-actions">
             <button class="btn-retry" @click="router.push('/practice')">返回练习列表</button>
           </div>
@@ -162,7 +244,7 @@ const correctCount = computed(() => results.value.filter(r => r === true).length
     </section>
 
     <!-- Question area -->
-    <section v-else class="question-section">
+    <section v-else-if="currentQuestion" class="question-section">
       <div class="container">
         <div class="question-card">
           <div class="question-stem">

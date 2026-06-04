@@ -2,6 +2,7 @@
 import logging
 from datetime import datetime
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import BusinessException
@@ -41,6 +42,16 @@ def list_approved_projects(db: Session, page: int = None, page_size: int = None)
 
 def get_project(db: Session, project_id: int):
     return db.query(Project).filter(Project.id == project_id).first()
+
+
+def get_accessible_project(db: Session, project_id: int, user_id: str):
+    """学生端作品详情：仅作者可看未审核作品，已通过作品对登录用户可见。"""
+    project = get_project(db, project_id)
+    if not project:
+        return None
+    if project.status == "approved" or project.author_id == user_id:
+        return project
+    return None
 
 
 def get_user_projects(db: Session, user_id: str, page: int = None, page_size: int = None):
@@ -122,11 +133,11 @@ def toggle_like(db: Session, user_id: str, project_id: int):
 
     if existing:
         db.delete(existing)
-        # 原子递减 likes，避免并发竞态
+        # 原子递减 likes，钳制到 0 防止负数
         db.execute(
             Project.__table__.update()
             .where(Project.id == project_id)
-            .values(likes=Project.likes - 1)
+            .values(likes=func.max(Project.likes - 1, 0))
         )
         db.commit()
         db.refresh(project)

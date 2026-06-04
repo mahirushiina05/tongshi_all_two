@@ -3,7 +3,8 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { Material } from '../../api/material'
 import type { Question } from '../../api/question'
-import { uploadFile } from '../../api/upload'
+import PdfPreviewDialog from '../../components/common/PdfPreviewDialog.vue'
+import { useUploadWithProgress } from '../../composables/useUploadWithProgress'
 import {
   createAdminPublicCourse,
   createAdminPublicMaterial,
@@ -39,6 +40,7 @@ const activeTab = ref<'materials' | 'questions'>('materials')
 const courseLoading = ref(false)
 const contentLoading = ref(false)
 const saving = ref(false)
+const { uploading, percent: uploadPercent, upload } = useUploadWithProgress()
 
 const materials = ref<Material[]>([])
 const questions = ref<Question[]>([])
@@ -70,6 +72,18 @@ const questionForm = ref({
 })
 
 const selectedCourseId = computed(() => selectedCourse.value?.id || 0)
+
+const previewVisible = ref(false)
+const previewUrl = ref('')
+const previewTitle = ref('')
+const previewFileId = ref<number | undefined>(undefined)
+
+function previewMaterial(row: Material) {
+  previewTitle.value = row.title
+  previewFileId.value = row.file_id
+  previewUrl.value = row.url || ''
+  previewVisible.value = true
+}
 const questionDialogTitle = computed(() => editingQuestionId.value ? '编辑公共题目' : '新增公共题目')
 const materialDialogTitle = computed(() => editingMaterialId.value ? '编辑公共资料' : '新增公共资料')
 
@@ -220,7 +234,7 @@ async function saveMaterial() {
   saving.value = true
   try {
     if (materialForm.value.file) {
-      const uploaded = await uploadFile(materialForm.value.file)
+      const uploaded = await upload(materialForm.value.file, 'public_course_material')
       materialForm.value.url = uploaded.url
       materialForm.value.size = formatFileSize(uploaded.size)
       materialForm.value.file_id = uploaded.file_id
@@ -365,6 +379,20 @@ onMounted(() => fetchCourses())
           <el-table-column prop="name" label="课程名称" min-width="160" />
           <el-table-column prop="material_count" label="资料" width="80" align="center" />
           <el-table-column prop="question_count" label="题目" width="80" align="center" />
+          <el-table-column label="同步状态" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag
+                :type="row.sync_status === 'synced' ? 'success' : row.sync_status === 'partial' ? 'warning' : 'info'"
+                size="small"
+                effect="plain"
+              >
+                {{ row.sync_status === 'synced' ? '已同步' : row.sync_status === 'partial' ? '部分同步' : '未同步' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="教师副本" width="90" align="center">
+            <template #default="{ row }">{{ row.sync_copy_count || 0 }}</template>
+          </el-table-column>
           <el-table-column label="创建时间" width="120">
             <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
           </el-table-column>
@@ -399,8 +427,9 @@ onMounted(() => fetchCourses())
                 <el-table-column prop="type" label="类型" width="90" />
                 <el-table-column prop="size" label="大小" width="100" />
                 <el-table-column prop="url" label="地址" min-width="180" show-overflow-tooltip />
-                <el-table-column label="操作" width="130" fixed="right">
+                <el-table-column label="操作" width="180" fixed="right">
                   <template #default="{ row }">
+                    <el-button v-if="row.url || row.file_id" size="small" text @click="previewMaterial(row)">预览</el-button>
                     <el-button size="small" text @click="openEditMaterial(row)">编辑</el-button>
                     <el-button size="small" type="danger" text @click="removeMaterial(row)">删除</el-button>
                   </template>
@@ -465,6 +494,7 @@ onMounted(() => fetchCourses())
             <span v-if="!materialForm.file">{{ materialForm.file_id ? '已关联文件，点击更换' : '点击选择要上传的文件' }}</span>
             <span v-else class="file-name">{{ materialForm.file.name }}</span>
           </div>
+          <el-progress v-if="uploading" :percentage="uploadPercent" style="margin-top: 12px" />
         </el-form-item>
         <el-form-item label="资料大小">
           <span class="size-display">{{ materialForm.size }}</span>
@@ -472,7 +502,7 @@ onMounted(() => fetchCourses())
       </el-form>
       <template #footer>
         <el-button @click="showMaterialDialog = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="saveMaterial">保存并同步</el-button>
+        <el-button type="primary" :loading="saving || uploading" @click="saveMaterial">保存并同步</el-button>
       </template>
     </el-dialog>
 
@@ -503,6 +533,13 @@ onMounted(() => fetchCourses())
         <el-button type="primary" :loading="saving" @click="saveQuestion">保存并同步</el-button>
       </template>
     </el-dialog>
+
+    <PdfPreviewDialog
+      v-model:visible="previewVisible"
+      :title="previewTitle"
+      :url="previewUrl"
+      :file-id="previewFileId"
+    />
   </div>
 </template>
 

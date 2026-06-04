@@ -1,13 +1,15 @@
 """Material routes"""
+from typing import Optional
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.core.security import get_current_user, require_role
-from app.core.response import success
+from app.core.response import success, paginated_success
 from app.core.exceptions import BusinessException
 from app.schemas.common import AuthUser, MaterialCreate
-from app.services.material_service import list_materials, create_material, delete_material
+from app.services.material_service import can_view_course_materials, list_materials, create_material, delete_material
 
 router = APIRouter(tags=["materials"])
 
@@ -25,24 +27,30 @@ def _format_material(m):
     }
 
 
-@router.get("/courses/{course_id}/contents", summary="获取课程内容", description="返回指定课程的所有视频和 PDF 学习资料")
+@router.get("/courses/{course_id}/contents", summary="获取课程内容", description="返回指定课程的所有视频和 PDF 学习资料，支持关键词搜索")
 def get_course_contents(
     course_id: int,
+    keyword: Optional[str] = None,
     db: Session = Depends(get_db),
-    _: AuthUser = Depends(get_current_user),
+    current_user: AuthUser = Depends(get_current_user),
 ):
-    materials = list_materials(db, course_id)
+    if not can_view_course_materials(db, course_id, current_user.id, current_user.role):
+        raise BusinessException(404, "课程不存在")
+    materials, _ = list_materials(db, course_id, keyword=keyword)
     return success([_format_material(m) for m in materials])
 
 
-@router.get("/materials", summary="获取全部资料列表", description="教师端：按课程返回所有学习资料")
+@router.get("/materials", summary="获取全部资料列表", description="教师端：按课程返回所有学习资料，支持分页和关键词搜索")
 def get_all_materials(
     course_id: int | None = None,
+    keyword: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
     db: Session = Depends(get_db),
     current_user: AuthUser = Depends(require_role("teacher")),
 ):
-    materials = list_materials(db, course_id, current_user.id)
-    return success([_format_material(m) for m in materials])
+    materials, total = list_materials(db, course_id, current_user.id, keyword, page, page_size)
+    return paginated_success([_format_material(m) for m in materials], total, page, page_size)
 
 
 @router.post("/materials", summary="新增资料", description="教师端：为指定课程添加视频或 PDF 学习资料")

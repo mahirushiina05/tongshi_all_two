@@ -43,18 +43,19 @@ const selectedAnnouncementId = ref<number | null>(null)
 const selectedClassId = ref<number | null>(null)
 const reportData = ref<CompletionReport | null>(null)
 const reportLoading = ref(false)
+const completedPage = ref(1)
+const completedPageSize = ref(20)
+const incompletePage = ref(1)
+const incompletePageSize = ref(20)
 
-// 按班级筛选后的学生列表
 const filteredCompletedStudents = computed(() => {
   if (!reportData.value) return []
-  if (!selectedClassId.value) return reportData.value.completed_students
-  return reportData.value.completed_students.filter(s => s.class_id === selectedClassId.value)
+  return reportData.value.completed_students.items
 })
 
 const filteredIncompleteStudents = computed(() => {
   if (!reportData.value) return []
-  if (!selectedClassId.value) return reportData.value.incomplete_students
-  return reportData.value.incomplete_students.filter(s => s.class_id === selectedClassId.value)
+  return reportData.value.incomplete_students.items
 })
 
 // 班级选项（包含"全部班级"）
@@ -69,11 +70,17 @@ const classOptions = computed(() => {
   ]
 })
 
-async function loadReport(id: number) {
+async function loadReport(id: number, resetClass = false) {
   reportLoading.value = true
-  selectedClassId.value = null // 切换任务时重置班级筛选
+  if (resetClass) selectedClassId.value = null
   try {
-    reportData.value = await getCompletionReport(id)
+    reportData.value = await getCompletionReport(id, {
+      class_id: selectedClassId.value || undefined,
+      completed_page: completedPage.value,
+      completed_page_size: completedPageSize.value,
+      incomplete_page: incompletePage.value,
+      incomplete_page_size: incompletePageSize.value,
+    })
   } catch {
     ElMessage.error('作业完成情况加载失败，请稍后重试')
   } finally {
@@ -81,9 +88,27 @@ async function loadReport(id: number) {
   }
 }
 
+function handleCompletedPageChange(newPage: number) {
+  completedPage.value = newPage
+  if (selectedAnnouncementId.value) loadReport(selectedAnnouncementId.value)
+}
+
+function handleIncompletePageChange(newPage: number) {
+  incompletePage.value = newPage
+  if (selectedAnnouncementId.value) loadReport(selectedAnnouncementId.value)
+}
+
 function handleAnnouncementChange(val: number | null) {
-  if (val) loadReport(val)
+  completedPage.value = 1
+  incompletePage.value = 1
+  if (val) loadReport(val, true)
   else reportData.value = null
+}
+
+function handleClassChange() {
+  completedPage.value = 1
+  incompletePage.value = 1
+  if (selectedAnnouncementId.value) loadReport(selectedAnnouncementId.value)
 }
 
 onMounted(async () => {
@@ -93,7 +118,7 @@ onMounted(async () => {
     const taskId = Number(route.query.task_id)
     if (Number.isFinite(taskId) && taskId > 0) {
       selectedAnnouncementId.value = taskId
-      await loadReport(taskId)
+      await loadReport(taskId, true)
     }
   } catch {
     ElMessage.error('作业数据加载失败，请稍后重试')
@@ -132,6 +157,7 @@ onMounted(async () => {
         size="default"
         style="width: 200px"
         clearable
+        @change="handleClassChange"
       >
         <el-option
           v-for="opt in classOptions"
@@ -213,16 +239,16 @@ onMounted(async () => {
         
         <!-- 已完成学生名单 -->
         <div v-if="filteredCompletedStudents.length > 0" class="students-table">
-          <h4 class="section-title">已完成学生名单</h4>
+          <h4 class="section-title">已完成学生名单（{{ reportData.completed_students?.total || 0 }} 人）</h4>
           <el-table :data="filteredCompletedStudents" stripe style="width: 100%; max-width: 700px;">
             <el-table-column prop="id" label="学号" width="140"/>
             <el-table-column prop="name" label="姓名" width="140" />
             <el-table-column prop="major" label="专业" width="200"/>
             <el-table-column prop="class_name" label="班级" width="220"/>
-            <el-table-column 
-              prop="score" 
-              label="成绩" 
-              width="100" 
+            <el-table-column
+              prop="score"
+              label="成绩"
+              width="100"
               align="center"
             >
               <template #default="scope">
@@ -232,17 +258,37 @@ onMounted(async () => {
               </template>
             </el-table-column>
           </el-table>
+          <div v-if="(reportData.completed_students?.total || 0) > completedPageSize" class="pagination-wrap">
+            <el-pagination
+              background
+              layout="prev, pager, next"
+              :total="reportData.completed_students?.total || 0"
+              :page-size="completedPageSize"
+              :current-page="completedPage"
+              @current-change="handleCompletedPageChange"
+            />
+          </div>
         </div>
-        
+
         <!-- 未完成学生名单 -->
         <div v-if="filteredIncompleteStudents.length > 0" class="students-table">
-          <h4 class="section-title">未完成学生名单</h4>
+          <h4 class="section-title">未完成学生名单（{{ reportData.incomplete_students?.total || 0 }} 人）</h4>
           <el-table :data="filteredIncompleteStudents" stripe style="width: 100%; max-width: 550px;">
             <el-table-column prop="id" label="学号" width="140" />
             <el-table-column prop="name" label="姓名" width="100" />
             <el-table-column prop="major" label="专业" width="130" />
             <el-table-column prop="class_name" label="班级" width="110" />
           </el-table>
+          <div v-if="(reportData.incomplete_students?.total || 0) > incompletePageSize" class="pagination-wrap">
+            <el-pagination
+              background
+              layout="prev, pager, next"
+              :total="reportData.incomplete_students?.total || 0"
+              :page-size="incompletePageSize"
+              :current-page="incompletePage"
+              @current-change="handleIncompletePageChange"
+            />
+          </div>
         </div>
         
         <!-- 全部完成提示 -->
@@ -417,6 +463,12 @@ onMounted(async () => {
   color: #10b981;
   font-weight: 600;
   font-size: 1rem;
+}
+
+.pagination-wrap {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-md) 0;
 }
 
 .students-table {

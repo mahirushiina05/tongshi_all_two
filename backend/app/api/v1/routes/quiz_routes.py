@@ -17,7 +17,7 @@ def submit(
     db: Session = Depends(get_db),
     current_user: AuthUser = Depends(get_current_user),
 ):
-    result = submit_answer(db, current_user.id, data.question_id, data.user_answer)
+    result = submit_answer(db, current_user.id, data.question_id, data.user_answer, current_user.role)
     return success(result)
 
 

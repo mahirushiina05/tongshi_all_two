@@ -2,7 +2,6 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getCourses, type Course } from '@/api/course'
-import { getQuestions } from '@/api/question'
 import { getQuizHistory, getQuizStats } from '@/api/quiz'
 
 const router = useRouter()
@@ -22,7 +21,6 @@ onMounted(async () => {
       getQuizStats(),
       getCourses(),
       getQuizHistory(5),
-      getQuestions(),
     ])
     stats.value = [
       { label: '总题数', value: String(quizStats.total_questions) },

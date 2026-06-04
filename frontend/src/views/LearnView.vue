@@ -6,14 +6,18 @@ import { getCourses, type Course } from '@/api/course'
 const router = useRouter()
 const courses = ref<Course[]>([])
 const loading = ref(true)
+const keyword = ref('')
 
-onMounted(async () => {
+async function loadCourses() {
+  loading.value = true
   try {
-    courses.value = await getCourses()
+    courses.value = await getCourses(keyword.value || undefined)
   } finally {
     loading.value = false
   }
-})
+}
+
+onMounted(loadCourses)
 </script>
 
 <template>
@@ -30,6 +34,15 @@ onMounted(async () => {
 
     <section class="courses-section">
       <div class="container">
+        <div class="search-bar">
+          <input
+            v-model="keyword"
+            type="text"
+            placeholder="搜索课程名称"
+            @keyup.enter="loadCourses"
+          />
+          <button @click="loadCourses">搜索</button>
+        </div>
         <div v-if="loading" class="empty-state">课程加载中...</div>
         <div v-else-if="courses.length > 0" class="course-grid">
           <button v-for="course in courses" :key="course.id" class="course-card" @click="router.push(`/learn/course/${course.id}`)">
@@ -38,7 +51,7 @@ onMounted(async () => {
             <span>查看课程</span>
           </button>
         </div>
-        <div v-else class="empty-state">暂无课程内容。</div>
+        <div v-else class="empty-state">{{ keyword ? '未找到匹配的课程' : '暂无课程内容。' }}</div>
       </div>
     </section>
   </div>
@@ -91,6 +104,29 @@ onMounted(async () => {
 
 .courses-section {
   padding: var(--space-2xl) 0 var(--space-3xl);
+}
+
+.search-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: var(--space-xl);
+}
+
+.search-bar input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+}
+
+.search-bar button {
+  padding: 10px 20px;
+  background: var(--color-learn);
+  color: white;
+  border-radius: var(--radius-md);
+  font-weight: 700;
+  font-size: 0.85rem;
 }
 
 .course-grid {

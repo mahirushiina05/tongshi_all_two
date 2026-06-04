@@ -11,23 +11,27 @@ const courseId = computed(() => Number(route.params.courseId))
 const course = ref<CourseDetail | null>(null)
 const materials = ref<Material[]>([])
 const loading = ref(true)
+const keyword = ref('')
 
 function materialUrl(item: Material) {
   return resolveFileUrl(item.file_id ? `/api/files/${item.file_id}` : item.url)
 }
 
-onMounted(async () => {
+async function loadContents() {
+  loading.value = true
   try {
     const [detail, contents] = await Promise.all([
       getCourseDetail(courseId.value),
-      getCourseContents(courseId.value),
+      getCourseContents(courseId.value, keyword.value || undefined),
     ])
     course.value = detail
     materials.value = contents
   } finally {
     loading.value = false
   }
-})
+}
+
+onMounted(loadContents)
 </script>
 
 <template>
@@ -44,6 +48,15 @@ onMounted(async () => {
 
     <section class="materials-section">
       <div class="container">
+        <div class="search-bar">
+          <input
+            v-model="keyword"
+            type="text"
+            placeholder="搜索资料标题"
+            @keyup.enter="loadContents"
+          />
+          <button @click="loadContents">搜索</button>
+        </div>
         <div v-if="loading" class="empty-state">课程加载中...</div>
         <div v-else-if="materials.length > 0" class="materials-grid">
           <a
@@ -59,7 +72,7 @@ onMounted(async () => {
             <p>{{ item.size || '未记录大小' }} · {{ item.date || '未记录日期' }}</p>
           </a>
         </div>
-        <div v-else class="empty-state">该课程暂无学习资料。</div>
+        <div v-else class="empty-state">{{ keyword ? '未找到匹配的资料' : '该课程暂无学习资料。' }}</div>
       </div>
     </section>
   </div>
@@ -97,6 +110,29 @@ onMounted(async () => {
 
 .materials-section {
   padding: var(--space-3xl) 0;
+}
+
+.search-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: var(--space-xl);
+}
+
+.search-bar input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+}
+
+.search-bar button {
+  padding: 10px 20px;
+  background: var(--color-learn);
+  color: white;
+  border-radius: var(--radius-md);
+  font-weight: 700;
+  font-size: 0.85rem;
 }
 
 .materials-grid {

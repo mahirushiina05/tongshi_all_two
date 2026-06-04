@@ -5,7 +5,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import BusinessException
-from app.models.entities import Class, Course, Material, Question, StudentProgress
+from app.models.entities import Class, Course, Material, Question, StudentClassEnrollment, StudentProgress
 from app.services.public_course_sync_service import mirror_public_course_content
 
 
@@ -14,6 +14,9 @@ def list_questions(
     course_id: int | None = None,
     type_: str | None = None,
     teacher_id: str | None = None,
+    keyword: str | None = None,
+    page: int | None = None,
+    page_size: int | None = None,
 ):
     query = db.query(Question).join(Course, Course.id == Question.course_id)
     if teacher_id is not None:
@@ -22,7 +25,14 @@ def list_questions(
         query = query.filter(Question.course_id == course_id)
     if type_ is not None:
         query = query.filter(Question.type == type_)
-    return query.order_by(Question.id).all()
+    if keyword:
+        query = query.filter(Question.stem.contains(keyword))
+    total = query.count()
+    if page and page_size:
+        questions = query.order_by(Question.id).offset((page - 1) * page_size).limit(page_size).all()
+    else:
+        questions = query.order_by(Question.id).all()
+    return questions, total
 
 
 def get_question(db: Session, question_id: int, teacher_id: str | None = None):
@@ -93,12 +103,30 @@ def get_course_questions(db: Session, course_id: int):
     return db.query(Question).filter(Question.course_id == course_id).order_by(Question.id).all()
 
 
-def list_courses(db: Session, teacher_id: str | None = None):
+def can_view_course_questions(db: Session, course_id: int, user_id: str, role: str) -> bool:
+    """校验课程题目访问权限：学生限所在课程，教师限自有或公共课程。"""
+    if role == "student":
+        return db.query(StudentClassEnrollment).join(
+            Class, Class.id == StudentClassEnrollment.class_id,
+        ).filter(
+            StudentClassEnrollment.user_id == user_id,
+            Class.course_id == course_id,
+        ).first() is not None
+    if role == "teacher":
+        return db.query(Course).filter(
+            Course.id == course_id,
+            _course_access_filter(user_id),
+        ).first() is not None
+    return db.query(Course).filter(Course.id == course_id).first() is not None
+
+
+def list_courses(db: Session, teacher_id: str | None = None, keyword: str | None = None):
     query = db.query(Course)
     if teacher_id is not None:
         query = query.filter(_course_access_filter(teacher_id))
-        return query.order_by(Course.is_public.asc(), Course.id.desc()).all()
-    return query.order_by(Course.id.desc()).all()
+    if keyword:
+        query = query.filter(Course.name.contains(keyword))
+    return query.order_by(Course.is_public.asc(), Course.id.desc()).all()
 
 
 def create_course(db: Session, name: str, teacher_id: str, is_public: bool = False):

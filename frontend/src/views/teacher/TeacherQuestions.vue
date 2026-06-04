@@ -10,12 +10,18 @@ const questions = ref<Question[]>([])
 const loading = ref(true)
 const filterCourse = ref<number | ''>('')
 const filterType = ref<'' | 'choice' | 'fill' | 'multi_choice'>('')
+const filterKeyword = ref('')
+const page = ref(1)
+const pageSize = ref(20)
+const total = ref(0)
 const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 const importDialogVisible = ref(false)
 const importFile = ref<File | null>(null)
 const importInput = ref<HTMLInputElement | null>(null)
 const importing = ref(false)
+const importErrors = ref<{ row: number; reason: string }[]>([])
+const importErrorDialogVisible = ref(false)
 
 const form = reactive({
   course_id: '' as number | '',
@@ -35,10 +41,15 @@ async function loadCourses() {
 async function loadQuestions() {
   loading.value = true
   try {
-    questions.value = await getQuestions({
+    const result = await getQuestions({
       course_id: filterCourse.value || undefined,
       type: filterType.value || undefined,
+      keyword: filterKeyword.value || undefined,
+      page: page.value,
+      page_size: pageSize.value,
     })
+    questions.value = result.items
+    total.value = result.total
   } catch {
     ElMessage.error('题目加载失败，请稍后重试')
   } finally {
@@ -49,6 +60,13 @@ async function loadQuestions() {
 function resetFilter() {
   filterCourse.value = ''
   filterType.value = ''
+  filterKeyword.value = ''
+  page.value = 1
+  loadQuestions()
+}
+
+function handlePageChange(newPage: number) {
+  page.value = newPage
   loadQuestions()
 }
 
@@ -168,7 +186,12 @@ async function handleImport() {
   try {
     const result = await importQuestions(importFile.value)
     ElMessage.success(`导入完成：成功 ${result.success_count} 题，失败 ${result.fail_count} 题`)
+    if (result.errors && result.errors.length > 0) {
+      importErrors.value = result.errors
+      importErrorDialogVisible.value = true
+    }
     importDialogVisible.value = false
+    page.value = 1
     await loadQuestions()
   } catch {
     ElMessage.error('导入失败，请检查文件格式和课程名称')
@@ -193,16 +216,17 @@ onMounted(async () => {
     </div>
 
     <div class="filter-bar">
-      <el-select v-model="filterCourse" placeholder="全部课程" clearable style="width: 220px" @change="loadQuestions">
+      <el-input v-model="filterKeyword" placeholder="搜索题干" clearable style="width: 200px" @keyup.enter="loadQuestions" @clear="loadQuestions" />
+      <el-select v-model="filterCourse" placeholder="全部课程" clearable style="width: 220px" @change="page = 1; loadQuestions()">
         <el-option v-for="course in courses" :key="course.id" :label="course.name" :value="course.id" />
       </el-select>
-      <el-select v-model="filterType" placeholder="全部题型" clearable style="width: 140px" @change="loadQuestions">
+      <el-select v-model="filterType" placeholder="全部题型" clearable style="width: 140px" @change="page = 1; loadQuestions()">
         <el-option label="选择题" value="choice" />
         <el-option label="多选题" value="multi_choice" />
         <el-option label="填空题" value="fill" />
       </el-select>
       <el-button @click="resetFilter">重置</el-button>
-      <span class="filter-count">共 {{ questions.length }} 题</span>
+      <span class="filter-count">共 {{ total }} 题</span>
     </div>
 
     <el-table :data="questions" stripe style="width: 100%" v-loading="loading">
@@ -234,7 +258,18 @@ onMounted(async () => {
     </el-table>
 
     <div v-if="!loading && questions.length === 0" class="empty-state">
-      暂无题目，点击“新增题目”或“导入题目”开始维护题库。
+      暂无题目，点击"新增题目"或"导入题目"开始维护题库。
+    </div>
+
+    <div v-if="total > pageSize" class="pagination-wrap">
+      <el-pagination
+        background
+        layout="prev, pager, next"
+        :total="total"
+        :page-size="pageSize"
+        :current-page="page"
+        @current-change="handlePageChange"
+      />
     </div>
 
     <el-dialog v-model="dialogVisible" :title="editingId ? '编辑题目' : '新增题目'" width="560px">
@@ -290,7 +325,7 @@ onMounted(async () => {
             <tr><td>fill</td><td>示例课程</td><td>中国的首都是哪里？</td><td></td><td>北京</td><td>填空题直接填写答案关键词。</td></tr>
           </tbody>
         </table>
-        <p class="import-note">请将“课程名称”填写为当前教师已有课程名称；“题型”支持 choice、multi_choice 和 fill。多选题答案列填写排序后的字母组合，如 ABD。</p>
+        <p class="import-note">请将"课程名称"填写为当前教师已有课程名称；"题型"支持 choice、multi_choice 和 fill。多选题答案列填写排序后的字母组合，如 ABD。</p>
       </div>
       <div class="import-actions">
         <div class="template-block">
@@ -311,6 +346,17 @@ onMounted(async () => {
       <template #footer>
         <el-button @click="importDialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="importing" @click="handleImport">开始导入</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 导入失败详情弹窗 -->
+    <el-dialog v-model="importErrorDialogVisible" title="导入失败详情" width="560px">
+      <el-table :data="importErrors" stripe max-height="400">
+        <el-table-column prop="row" label="行号" width="80" />
+        <el-table-column prop="reason" label="失败原因" />
+      </el-table>
+      <template #footer>
+        <el-button @click="importErrorDialogVisible = false">关闭</el-button>
       </template>
     </el-dialog>
   </div>
@@ -348,6 +394,12 @@ onMounted(async () => {
 .import-note {
   color: var(--color-text-muted);
   font-size: 0.9rem;
+}
+
+.pagination-wrap {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-lg) 0;
 }
 
 .import-actions {

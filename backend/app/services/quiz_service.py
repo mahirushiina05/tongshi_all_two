@@ -3,14 +3,27 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy.orm import joinedload
 
+from app.core.exceptions import BusinessException
 from app.models.entities import Class, Question, QuizAttempt, StudentClassEnrollment, StudentProgress
 from app.core.timezone_utils import to_beijing_iso, beijing_today
 
 
-def submit_answer(db: Session, user_id: str, question_id: int, user_answer: str):
+def _student_can_access_course(db: Session, user_id: str, course_id: int) -> bool:
+    """校验学生是否加入了题目所属课程。"""
+    return db.query(StudentClassEnrollment).join(
+        Class, Class.id == StudentClassEnrollment.class_id,
+    ).filter(
+        StudentClassEnrollment.user_id == user_id,
+        Class.course_id == course_id,
+    ).first() is not None
+
+
+def submit_answer(db: Session, user_id: str, question_id: int, user_answer: str, role: str = "student"):
     question = db.query(Question).filter(Question.id == question_id).first()
     if not question:
-        return None
+        raise BusinessException(404, "题目不存在")
+    if role == "student" and not _student_can_access_course(db, user_id, question.course_id):
+        raise BusinessException(404, "题目不存在")
 
     if question.type == "multi_choice":
         # 多选题：将用户答案和标准答案各自排序后比较
@@ -92,21 +105,7 @@ def get_quiz_history(db: Session, user_id: str, limit: int = 10):
 
 
 def get_quiz_stats(db: Session, user_id: str):
-    total_questions = db.query(Question).count()
-    questions_done = db.query(QuizAttempt).filter(
-        QuizAttempt.user_id == user_id).count()
-    correct = db.query(QuizAttempt).filter(
-        QuizAttempt.user_id == user_id, QuizAttempt.is_correct == True,
-    ).count()
-    accuracy = int(correct / questions_done * 100) if questions_done > 0 else 0
-
-    today = beijing_today()
-    today_count = db.query(QuizAttempt).filter(
-        QuizAttempt.user_id == user_id,
-    ).filter(
-        QuizAttempt.answered_at >= today,
-    ).count()
-    # 按学生所属课程过滤 total_questions
+    # 先取学生所属课程范围，四个指标统一限定在此范围
     student_course_ids = (
         db.query(Question.course_id)
         .join(Class, Class.course_id == Question.course_id)
@@ -116,12 +115,36 @@ def get_quiz_stats(db: Session, user_id: str):
         .all()
     )
     student_course_id_list = [row.course_id for row in student_course_ids]
-    if student_course_id_list:
-        total_questions = db.query(Question).filter(
-            Question.course_id.in_(student_course_id_list)
-        ).count()
-    else:
-        total_questions = 0
+    if not student_course_id_list:
+        return {
+            "total_questions": 0,
+            "questions_done": 0,
+            "accuracy": 0,
+            "today_count": 0,
+        }
+
+    course_question_ids = db.query(Question.id).filter(Question.course_id.in_(student_course_id_list))
+
+    total_questions = db.query(Question).filter(
+        Question.course_id.in_(student_course_id_list)
+    ).count()
+    questions_done = db.query(QuizAttempt).filter(
+        QuizAttempt.user_id == user_id,
+        QuizAttempt.question_id.in_(course_question_ids),
+    ).count()
+    correct = db.query(QuizAttempt).filter(
+        QuizAttempt.user_id == user_id,
+        QuizAttempt.is_correct == True,
+        QuizAttempt.question_id.in_(course_question_ids),
+    ).count()
+    accuracy = int(correct / questions_done * 100) if questions_done > 0 else 0
+
+    today = beijing_today()
+    today_count = db.query(QuizAttempt).filter(
+        QuizAttempt.user_id == user_id,
+        QuizAttempt.question_id.in_(course_question_ids),
+        QuizAttempt.answered_at >= today,
+    ).count()
 
     return {
         "total_questions": total_questions,

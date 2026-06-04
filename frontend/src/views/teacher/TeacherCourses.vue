@@ -7,14 +7,19 @@ import {
   createCourse,
   deleteCourse,
   getCourses,
+  getCoursesPage,
   updateCourse,
   type Course,
 } from '@/api/course'
 
 const courses = ref<Course[]>([])
+const pagedMyCourses = ref<Course[]>([])
 const loading = ref(true)
 const router = useRouter()
 const publicSearchKeyword = ref('')
+const myPage = ref(1)
+const myPageSize = ref(10)
+const myTotal = ref(0)
 
 const myCourses = computed(() => courses.value.filter(course => course.is_owner))
 const publicCourses = computed(() => courses.value.filter(course => course.is_public && !course.is_owner))
@@ -82,12 +87,23 @@ function openAddDialog() {
 async function loadCourses() {
   loading.value = true
   try {
-    courses.value = await getCourses()
+    const [allCourses, ownedPage] = await Promise.all([
+      getCourses(),
+      getCoursesPage({ scope: 'owned', page: myPage.value, page_size: myPageSize.value }),
+    ])
+    courses.value = allCourses
+    pagedMyCourses.value = ownedPage.items
+    myTotal.value = ownedPage.total
   } catch {
     ElMessage.error('课程列表加载失败，请稍后重试')
   } finally {
     loading.value = false
   }
+}
+
+function handleMyPageChange(page: number) {
+  myPage.value = page
+  loadCourses()
 }
 
 onMounted(async () => {
@@ -148,8 +164,8 @@ async function handleDelete(course: Course) {
       { type: 'warning', confirmButtonText: '确定删除', cancelButtonText: '取消' },
     )
     await deleteCourse(course.id)
-    courses.value = courses.value.filter(item => item.id !== course.id)
     ElMessage.success('已删除')
+    await loadCourses()
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') {
       ElMessage.error('删除失败，请稍后重试')
@@ -177,7 +193,7 @@ function formatDate(dateStr: string) {
       </div>
     </div>
 
-    <el-table :data="myCourses" stripe style="width: 100%" v-loading="loading">
+    <el-table :data="pagedMyCourses" stripe style="width: 100%" v-loading="loading">
       <el-table-column type="index" label="序号" width="70" align="center" />
       <el-table-column prop="name" label="课程名称" min-width="200" />
       <el-table-column label="资料数" width="100" align="center">
@@ -206,6 +222,17 @@ function formatDate(dateStr: string) {
 
     <div v-if="!loading && myCourses.length === 0" class="empty-state">
       <p>暂无课程，请点击「新建课程」添加</p>
+    </div>
+
+    <div v-if="myTotal > myPageSize" class="pagination-wrap">
+      <el-pagination
+        background
+        layout="prev, pager, next"
+        :total="myTotal"
+        :page-size="myPageSize"
+        :current-page="myPage"
+        @current-change="handleMyPageChange"
+      />
     </div>
 
     <div class="section-header public-section-header">
@@ -392,6 +419,12 @@ function formatDate(dateStr: string) {
 .public-course-search {
   max-width: 360px;
   margin-top: var(--space-xl);
+}
+
+.pagination-wrap {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-lg) 0;
 }
 
 .empty-state {

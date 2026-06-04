@@ -5,7 +5,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { createAnnouncement, deleteAnnouncement, getAnnouncements, type Announcement } from '@/api/announcement'
 import { getClasses, type ClassInfo } from '@/api/class'
 import { getCourses, type Course } from '@/api/course'
-import { getQuestions, type Question } from '@/api/question'
+import { getCourseQuestions, type Question } from '@/api/question'
 
 const router = useRouter()
 const announcements = ref<Announcement[]>([])
@@ -88,9 +88,9 @@ async function loadQuestions() {
   }
   questionLoading.value = true
   try {
-    const list = await getQuestions({ course_id: courseId })
+    const result = await getCourseQuestions(courseId)
     if (requestSeq === questionRequestSeq && form.course_id === courseId) {
-      questions.value = list
+      questions.value = result
     }
   } catch {
     if (requestSeq === questionRequestSeq && form.course_id === courseId) {

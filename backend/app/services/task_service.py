@@ -1,7 +1,7 @@
 """题目任务完成服务。"""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
@@ -9,6 +9,25 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import BusinessException
 from app.models.entities import Announcement, AnnouncementClass, QuizAttempt, StudentClassEnrollment, TaskCompletion, User
+
+
+# 北京时间时区偏移（UTC+8）
+BEIJING_TIME_DELTA = timedelta(hours=8)
+BEIJING_TZ = timezone(BEIJING_TIME_DELTA)
+
+
+def _get_now_beijing() -> datetime:
+    """获取当前北京时间（带时区信息）"""
+    return datetime.now(BEIJING_TZ)
+
+
+def _to_beijing_time(dt: datetime) -> datetime:
+    """将时间转换为北京时间（确保带时区信息）"""
+    if dt.tzinfo is None:
+        # 如果没有时区信息，假设是北京时间
+        return dt.replace(tzinfo=BEIJING_TZ)
+    # 如果有时区信息，转换为北京时间
+    return dt.astimezone(BEIJING_TZ)
 
 
 def _student_can_access(db: Session, user_id: str, announcement_id: int) -> bool:
@@ -29,8 +48,8 @@ def mark_completed(db: Session, user_id: str, announcement_id: int):
     ann = db.query(Announcement).filter(Announcement.id == announcement_id).first()
     if not ann or not _student_can_access(db, user_id, announcement_id):
         return None
-    # 截止时间校验：已过期的任务不允许标记完成
-    if ann.end_time and datetime.now(timezone.utc) > ann.end_time:
+    # 截止时间校验：已过期的任务不允许标记完成（使用北京时间）
+    if ann.end_time and _get_now_beijing() > _to_beijing_time(ann.end_time):
         raise BusinessException(400, "该任务已截止，无法标记完成")
     existing = db.query(TaskCompletion).filter(
         TaskCompletion.user_id == user_id,
@@ -49,7 +68,16 @@ def mark_completed(db: Session, user_id: str, announcement_id: int):
         raise BusinessException(500, "标记完成失败")
 
 
-def completion_report(db: Session, announcement_id: int, teacher_id: str):
+def completion_report(
+    db: Session,
+    announcement_id: int,
+    teacher_id: str,
+    class_id: int | None = None,
+    completed_page: int = 1,
+    completed_page_size: int = 20,
+    incomplete_page: int = 1,
+    incomplete_page_size: int = 20,
+):
     ann = db.query(Announcement).filter(
         Announcement.id == announcement_id,
         Announcement.teacher_id == teacher_id,
@@ -58,6 +86,8 @@ def completion_report(db: Session, announcement_id: int, teacher_id: str):
         return None
 
     class_links = db.query(AnnouncementClass).filter(AnnouncementClass.announcement_id == announcement_id).all()
+    if class_id is not None:
+        class_links = [link for link in class_links if link.class_id == class_id]
     class_ids = [link.class_id for link in class_links]
     students = (
         db.query(User, StudentClassEnrollment.class_id)
@@ -129,15 +159,17 @@ def completion_report(db: Session, announcement_id: int, teacher_id: str):
             "completed": class_completed,
         })
 
-    # 处理时区比较问题
     def _is_expired(end_time: datetime | None) -> bool:
+        """判断任务是否已过期（使用北京时间）"""
         if not end_time:
             return False
-        now = datetime.now(timezone.utc)
-        if end_time.tzinfo is None:
-            end_time_utc = end_time.replace(tzinfo=timezone.utc)
-            return now > end_time_utc
-        return now > end_time
+        return _get_now_beijing() > _to_beijing_time(end_time)
+
+    # 对已完成/未完成学生列表进行分页
+    completed_total = len(completed_students)
+    incomplete_total = len(incomplete_students)
+    completed_start = (completed_page - 1) * completed_page_size
+    incomplete_start = (incomplete_page - 1) * incomplete_page_size
 
     return {
         "announcement_id": ann.id,
@@ -145,9 +177,19 @@ def completion_report(db: Session, announcement_id: int, teacher_id: str):
         "course_id": ann.course_id,
         "class_names": [class_name_by_id.get(class_id, "") for class_id in class_ids],
         "total_students": len(seen_student_ids),
-        "completed_students": completed_students,
-        "completed_count": len(completed_students),
-        "incomplete_students": incomplete_students,
+        "completed_students": {
+            "items": completed_students[completed_start:completed_start + completed_page_size],
+            "total": completed_total,
+            "page": completed_page,
+            "page_size": completed_page_size,
+        },
+        "completed_count": completed_total,
+        "incomplete_students": {
+            "items": incomplete_students[incomplete_start:incomplete_start + incomplete_page_size],
+            "total": incomplete_total,
+            "page": incomplete_page,
+            "page_size": incomplete_page_size,
+        },
         "per_class": per_class,
         "is_expired": _is_expired(ann.end_time),
         "deadline": _iso(ann.end_time),
@@ -211,17 +253,12 @@ def task_overview(db: Session, teacher_id: str) -> dict:
     total_completed = 0
     total_incomplete = 0
     tasks = []
-    now = datetime.now(timezone.utc)
 
     def _is_expired(end_time: datetime | None) -> bool:
+        """判断任务是否已过期（使用北京时间）"""
         if not end_time:
             return False
-        # 处理时区比较问题
-        if end_time.tzinfo is None:
-            # end_time 无时区信息，转换为 UTC 时间比较
-            end_time_utc = end_time.replace(tzinfo=timezone.utc)
-            return now > end_time_utc
-        return now > end_time
+        return _get_now_beijing() > _to_beijing_time(end_time)
 
     for ann in anns:
         cids = ann_class_ids.get(ann.id, [])

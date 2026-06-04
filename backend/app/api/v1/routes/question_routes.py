@@ -12,14 +12,14 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.core.security import get_current_user, require_role
-from app.core.response import success
+from app.core.response import success, paginated_success
 from app.core.exceptions import BusinessException
 from app.core.upload_validation import validate_upload, ALLOWED_EXCEL_EXTENSIONS, MAX_EXCEL_SIZE
 from app.schemas.common import AuthUser, QuestionCreate, QuestionUpdate, CourseCreateRequest, CourseUpdateRequest
 from app.services.question_service import (
     list_questions, create_question, update_question, delete_question,
     get_course_questions, create_course, add_public_course, update_course, delete_course,
-    get_course_detail, import_questions_from_excel,
+    get_course_detail, import_questions_from_excel, can_view_course_questions,
 )
 from app.services.course_response_service import build_course_detail, build_course_list
 
@@ -41,20 +41,28 @@ def _format_question(q):
     }
 
 
-@router.get("", summary="题目列表", description="按课程和题型筛选题目")
+@router.get("", summary="题目列表", description="按课程和题型筛选题目，支持分页和关键词搜索")
 def get_questions(
     type: Optional[str] = None,
     course_id: Optional[int] = None,
+    keyword: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
     db: Session = Depends(get_db),
-    current_user: AuthUser = Depends(get_current_user),
+    current_user: AuthUser = Depends(require_role("teacher")),
 ):
-    teacher_id = current_user.id if current_user.role == "teacher" else None
-    questions = list_questions(db, course_id, type, teacher_id)
-    return success([_format_question(q) for q in questions])
+    questions, total = list_questions(db, course_id, type, current_user.id, keyword, page, page_size)
+    return paginated_success([_format_question(q) for q in questions], total, page, page_size)
 
 
 @router.get("/course/{course_id}", summary="课程题目", description="获取指定课程的所有题目（用于测验）")
-def get_course_questions_for_quiz(course_id: int, db: Session = Depends(get_db), _: AuthUser = Depends(get_current_user)):
+def get_course_questions_for_quiz(
+    course_id: int,
+    db: Session = Depends(get_db),
+    current_user: AuthUser = Depends(get_current_user),
+):
+    if not can_view_course_questions(db, course_id, current_user.id, current_user.role):
+        raise BusinessException(404, "课程不存在")
     questions = get_course_questions(db, course_id)
     return success([_format_question(q) for q in questions])
 
@@ -80,9 +88,13 @@ def remove_question(question_id: int, db: Session = Depends(get_db), current_use
     return success()
 
 
-@router.get("/courses", summary="课程列表", description="获取所有课程")
-def get_courses(db: Session = Depends(get_db), current_user: AuthUser = Depends(get_current_user)):
-    data = build_course_list(db, current_user)
+@router.get("/courses", summary="课程列表", description="获取所有课程，支持关键词搜索")
+def get_courses(
+    keyword: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: AuthUser = Depends(get_current_user),
+):
+    data = build_course_list(db, current_user, keyword)
     if current_user.role == "student" and isinstance(data, dict) and data.get("hint") is None:
         return success(data["courses"])
     return success(data)

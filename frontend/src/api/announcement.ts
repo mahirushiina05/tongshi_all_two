@@ -18,6 +18,23 @@ export interface Announcement {
   is_read: boolean
 }
 
+export interface StudentInfo {
+  id: string
+  name: string
+  major: string
+  class_id: number
+  class_name: string
+  score: number
+  total_questions: number
+}
+
+export interface PaginatedStudents {
+  items: StudentInfo[]
+  total: number
+  page: number
+  page_size: number
+}
+
 export interface CompletionReport {
   announcement_id: number
   announcement_title: string
@@ -25,8 +42,8 @@ export interface CompletionReport {
   class_names: string[]
   total_students: number
   completed_count: number
-  completed_students: { id: string; name: string; major: string; class_id: number; class_name: string; score: number; total_questions: number }[]
-  incomplete_students: { id: string; name: string; major: string; class_id: number; class_name: string; score: number; total_questions: number }[]
+  completed_students: PaginatedStudents
+  incomplete_students: PaginatedStudents
   per_class: { class_id: number; class_name: string; total: number; completed: number }[]
   is_expired: boolean
   deadline: string | null
@@ -84,8 +101,14 @@ export function recordCompletion(id: number) {
   return http.post<any, any>(`/announcements/${id}/complete`)
 }
 
-export function getCompletionReport(id: number) {
-  return http.get<any, CompletionReport>(`/announcements/${id}/completion-report`)
+export function getCompletionReport(id: number, params?: {
+  class_id?: number
+  completed_page?: number
+  completed_page_size?: number
+  incomplete_page?: number
+  incomplete_page_size?: number
+}) {
+  return http.get<any, CompletionReport>(`/announcements/${id}/completion-report`, { params })
 }
 
 export function getTaskOverview() {

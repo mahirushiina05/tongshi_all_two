@@ -10,6 +10,10 @@ export interface AdminPublicCourse {
   is_public: boolean
   material_count: number
   question_count: number
+  sync_copy_count?: number
+  synced_material_count?: number
+  synced_question_count?: number
+  sync_status?: 'not_synced' | 'partial' | 'synced'
 }
 
 export type AdminMaterialPayload = Omit<MaterialCreatePayload, 'course_id'>
