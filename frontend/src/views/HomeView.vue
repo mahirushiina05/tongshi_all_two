@@ -18,6 +18,7 @@ onMounted(() => {
       entries.forEach((entry) => {
         if (entry.isIntersecting) {
           entry.target.classList.add('visible')
+          observer.value?.unobserve(entry.target)
         }
       })
     },

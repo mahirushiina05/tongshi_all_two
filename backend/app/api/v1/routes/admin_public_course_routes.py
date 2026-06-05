@@ -157,7 +157,7 @@ def remove_public_material(
     db: Session = Depends(get_db),
     _: AuthUser = Depends(require_role("admin")),
 ):
-    material = service.update_public_material(material_id=material_id, db=db, data={})
+    material = service.get_public_material(db, material_id)
     if not material or material.course_id != course_id:
         raise BusinessException(404, "公共资料不存在")
     if not service.delete_public_material(db, material_id):
@@ -206,7 +206,7 @@ def remove_public_question(
     db: Session = Depends(get_db),
     _: AuthUser = Depends(require_role("admin")),
 ):
-    question = service.update_public_question(db, question_id, {})
+    question = service.get_public_question(db, question_id)
     if not question or question.course_id != course_id:
         raise BusinessException(404, "公共题目不存在")
     if not service.delete_public_question(db, question_id):

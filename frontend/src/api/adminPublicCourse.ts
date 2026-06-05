@@ -73,3 +73,13 @@ export function updateAdminPublicQuestion(courseId: number, questionId: number, 
 export function deleteAdminPublicQuestion(courseId: number, questionId: number) {
   return http.delete<any, any>(`/admin/public-courses/${courseId}/questions/${questionId}`)
 }
+
+export function importAdminPublicQuestions(courseId: number, file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return http.post<any, { success_count: number; fail_count: number; errors: { row: number; reason: string }[] }>(
+    `/admin/public-courses/${courseId}/questions/import`,
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  )
+}

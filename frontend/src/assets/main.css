@@ -19,17 +19,17 @@
   --color-learn-bg: rgba(45, 106, 122, 0.05);
 
   --color-create: #b8860b;
-  /* 造 - 琥珀/藤黄 */
+  /* 思 - 琥珀/藤黄 */
   --color-create-light: #f0d68a;
   --color-create-bg: rgba(184, 134, 11, 0.05);
 
   --color-practice: #6b4c8a;
-  /* 练 - 紫藤 */
+  /* 践 - 紫藤 */
   --color-practice-light: #c4aedd;
   --color-practice-bg: rgba(107, 76, 138, 0.05);
 
   --color-act: #3a7d5c;
-  /* 行 - 翠绿 */
+  /* 悟 - 翠绿 */
   --color-act-light: #a7d4b8;
   --color-act-bg: rgba(58, 125, 92, 0.05);
 
@@ -239,6 +239,20 @@ a:focus-visible {
 .el-button--warning {
   background-color: var(--color-create) !important;
   border-color: var(--color-create) !important;
+}
+
+.el-button--warning.is-text {
+  background-color: white !important;
+  color: #e74c3c !important;
+  border: 1px solid #e74c3c !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 4px 12px !important;
+}
+
+.el-button--warning.is-text:hover {
+  background-color: #e74c3c !important;
+  color: white !important;
+  border-color: #e74c3c !important;
 }
 
 /* 输入框 */

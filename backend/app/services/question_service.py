@@ -5,7 +5,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import BusinessException
-from app.models.entities import Class, Course, Material, Question, StudentClassEnrollment, StudentProgress
+from app.models.entities import Class, Course, Material, Question, StudentClassEnrollment
 from app.services.public_course_sync_service import mirror_public_course_content
 
 
@@ -191,8 +191,6 @@ def delete_course(db: Session, course_id: int, teacher_id: str):
         blockers.append("资料")
     if db.query(Question).filter(Question.course_id == course_id).count() > 0:
         blockers.append("题目")
-    if db.query(StudentProgress).filter(StudentProgress.course_id == course_id).count() > 0:
-        blockers.append("学习记录")
     if db.query(Class).filter(Class.course_id == course_id).count() > 0:
         blockers.append("班级")
     if blockers:

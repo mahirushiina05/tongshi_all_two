@@ -36,11 +36,6 @@ export function changePassword(data: { old_password: string; new_password: strin
   return http.put<any, { message: string }>('/change-password', data)
 }
 
-// 忘记密码（直接用学号/工号重置，无需登录）— 旧接口，保留兼容
-export function forgotPassword(data: { id: string; new_password: string }) {
-  return http.post<any, { message: string }>('/password/forgot', data)
-}
-
 // ── 密保问题管理（需登录）─────────────────────────────────────────────
 
 export interface SecurityQuestionItem {

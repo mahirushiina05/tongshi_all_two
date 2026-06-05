@@ -24,9 +24,20 @@ export function createTeacher(data: { id: string; name: string; major?: string }
     return http.post<any, any>('/admin/teachers', data)
 }
 
-// 删除教师
-export function deleteTeacher(teacherId: string) {
-    return http.delete<any, any>(`/admin/teachers/${teacherId}`)
+// 查询教师关联数据
+export function getTeacherDependencies(teacherId: string) {
+    return http.get<any, {
+        course_count: number
+        class_count: number
+        announcement_count: number
+        project_count: number
+        showcase_count: number
+    }>(`/admin/teachers/${teacherId}/dependencies`)
+}
+
+// 删除教师（force=true 时级联删除关联数据）
+export function deleteTeacher(teacherId: string, force = false) {
+    return http.delete<any, any>(`/admin/teachers/${teacherId}`, { params: { force } })
 }
 
 // 重置教师密码

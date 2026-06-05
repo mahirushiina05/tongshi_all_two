@@ -7,7 +7,6 @@ from app.models.entities import (
     Course,
     Project,
     QuizAttempt,
-    StudentProgress,
     StudentClassEnrollment,
     TaskCompletion,
     User,
@@ -38,7 +37,7 @@ def get_teacher_stats(db: Session, teacher_id: str):
     student_ids = _teacher_student_ids(db, teacher_id)
     total_students = len(student_ids)
     my_courses = db.query(Course).filter(Course.created_by == teacher_id).count()
-    public_courses = db.query(Course).filter(Course.is_public.is_(True)).count()
+    public_courses = db.query(Course).filter(Course.is_public == True).count()
     pending_reviews_query = db.query(Project).filter(Project.status == "pending")
     if student_ids:
         pending_reviews_query = pending_reviews_query.filter(Project.author_id.in_(student_ids))
@@ -148,24 +147,6 @@ def list_students(db: Session, teacher_id: str, class_id: int = None, page: int 
         class_id_list = list(student_class_ids[sid])
         class_name_str = "、".join(student_class_names[sid])
 
-        progresses = (
-            db.query(StudentProgress)
-            .join(Course, Course.id == StudentProgress.course_id)
-            .filter(
-                StudentProgress.user_id == sid,
-                StudentProgress.course_id.in_(
-                    db.query(Class.course_id).filter(Class.id.in_(class_ids))
-                ),
-            )
-            .all()
-        )
-        total_progress = sum(p.learn_progress for p in progresses)
-        avg_progress = int(total_progress / len(progresses)) if progresses else 0
-
-        total_done = sum(p.questions_done for p in progresses)
-        total_accuracy = sum(p.accuracy for p in progresses)
-        avg_accuracy = int(total_accuracy / len(progresses)) if progresses else 0
-
         assigned_task_ids: set[int] = set()
         for cid in class_id_list:
             assigned_task_ids.update(class_task_ids.get(cid, set()))
@@ -181,9 +162,6 @@ def list_students(db: Session, teacher_id: str, class_id: int = None, page: int 
             "major": s.major or "",
             "class_id": class_id_list[0] if class_id_list else None,
             "class_name": class_name_str,
-            "progress": avg_progress,
-            "exercises": total_done,
-            "accuracy": avg_accuracy,
             "completed_tasks": completed_count,
             "incomplete_tasks": incomplete_count,
             "task_completion_rate": task_completion_rate,

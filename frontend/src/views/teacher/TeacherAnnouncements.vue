@@ -1,15 +1,22 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import type { TableInstance } from 'element-plus'
 import { createAnnouncement, deleteAnnouncement, getAnnouncements, type Announcement } from '@/api/announcement'
 import { getClasses, type ClassInfo } from '@/api/class'
 import { getCourses, type Course } from '@/api/course'
 import { getCourseQuestions, type Question } from '@/api/question'
+import {
+  appendSelectedQuestionIds,
+  removeSelectedQuestionId,
+  syncVisibleSelectedQuestionIds,
+} from './questionSelection'
 
 const router = useRouter()
 const announcements = ref<Announcement[]>([])
 const courses = ref<Course[]>([])
+const ownedCourses = computed(() => courses.value.filter(course => course.is_owner))
 const classes = ref<ClassInfo[]>([])
 const questions = ref<Question[]>([])
 const loading = ref(true)
@@ -20,7 +27,9 @@ const questionKeyword = ref('')
 const questionTypeFilter = ref<'' | 'choice' | 'fill' | 'multi_choice'>('')
 const questionAddCount = ref<number | null>(null)
 const draftSelectedQuestionIds = ref<number[]>([])
+const questionTableRef = ref<TableInstance>()
 let questionRequestSeq = 0
+let syncingQuestionSelection = false
 
 const form = reactive({
   course_id: '' as number | '',
@@ -60,6 +69,20 @@ const selectedQuestions = computed(() => {
     .filter((item): item is Question => Boolean(item))
 })
 
+async function syncQuestionTableSelection() {
+  await nextTick()
+  const table = questionTableRef.value
+  if (!table) return
+
+  syncingQuestionSelection = true
+  const selectedIds = new Set(draftSelectedQuestionIds.value)
+  filteredQuestions.value.forEach(row => {
+    table.toggleRowSelection(row, selectedIds.has(row.id))
+  })
+  await nextTick()
+  syncingQuestionSelection = false
+}
+
 function getQuestionTypeLabel(type: Question['type']) {
   if (type === 'choice') return '选择题'
   if (type === 'multi_choice') return '多选题'
@@ -90,6 +113,9 @@ async function loadQuestions() {
     const result = await getCourseQuestions(courseId)
     if (requestSeq === questionRequestSeq && form.course_id === courseId) {
       questions.value = result
+      if (questionDialogVisible.value) {
+        void syncQuestionTableSelection()
+      }
     }
   } catch {
     if (requestSeq === questionRequestSeq && form.course_id === courseId) {
@@ -104,7 +130,7 @@ async function loadQuestions() {
 
 function openCreate() {
   Object.assign(form, {
-    course_id: courses.value[0]?.id || '',
+    course_id: ownedCourses.value[0]?.id || '',
     class_ids: [],
     title: '',
     question_ids: [],
@@ -126,10 +152,12 @@ async function openQuestionPicker() {
   draftSelectedQuestionIds.value = [...form.question_ids]
   questionDialogVisible.value = true
   await loadQuestions()
+  await syncQuestionTableSelection()
 }
 
 function handleQuestionSelection(rows: Question[]) {
-  draftSelectedQuestionIds.value = rows.map(item => item.id)
+  if (syncingQuestionSelection) return
+  draftSelectedQuestionIds.value = syncVisibleSelectedQuestionIds(draftSelectedQuestionIds.value, filteredQuestions.value, rows)
 }
 
 function addTopFilteredQuestions() {
@@ -147,16 +175,19 @@ function addTopFilteredQuestions() {
     return
   }
   const addedIds = availableIds.slice(0, count)
-  draftSelectedQuestionIds.value = [...draftSelectedQuestionIds.value, ...addedIds]
+  draftSelectedQuestionIds.value = appendSelectedQuestionIds(draftSelectedQuestionIds.value, addedIds)
+  void syncQuestionTableSelection()
   ElMessage.success(`已加入 ${addedIds.length} 道题`)
 }
 
 function removeDraftQuestion(id: number) {
-  draftSelectedQuestionIds.value = draftSelectedQuestionIds.value.filter(item => item !== id)
+  draftSelectedQuestionIds.value = removeSelectedQuestionId(draftSelectedQuestionIds.value, id)
+  void syncQuestionTableSelection()
 }
 
 function clearDraftQuestions() {
   draftSelectedQuestionIds.value = []
+  void syncQuestionTableSelection()
 }
 
 function resetQuestionFilters() {
@@ -237,6 +268,12 @@ watch(() => form.course_id, () => {
   loadQuestions()
 })
 
+watch(filteredQuestions, () => {
+  if (questionDialogVisible.value) {
+    void syncQuestionTableSelection()
+  }
+})
+
 onMounted(async () => {
   try {
     await loadBase()
@@ -293,7 +330,7 @@ onMounted(async () => {
       <div class="form-group">
         <label>所属课程</label>
         <el-select v-model="form.course_id" placeholder="选择课程" size="large" style="width: 100%">
-          <el-option v-for="course in courses" :key="course.id" :label="course.name" :value="course.id" />
+          <el-option v-for="course in ownedCourses" :key="course.id" :label="course.name" :value="course.id" />
         </el-select>
       </div>
       <div class="form-group">
@@ -360,8 +397,10 @@ onMounted(async () => {
             <el-button plain type="primary" size="large" @click="addTopFilteredQuestions">加入前 N 题</el-button>
             <span class="question-result-count">筛选结果 {{ filteredQuestions.length }} 题</span>
           </div>
+          <p class="question-picker-tip">加入或勾选题目后，请点击底部“确定”，题目才会带入本次发布。</p>
 
           <el-table
+            ref="questionTableRef"
             :data="filteredQuestions"
             row-key="id"
             height="420"
@@ -370,7 +409,7 @@ onMounted(async () => {
             :empty-text="questions.length === 0 ? '当前课程暂无题目，请先到题库管理中新增或导入题目。' : '没有符合条件的题目，请调整关键词或题型。'"
             @selection-change="handleQuestionSelection"
           >
-            <el-table-column type="selection" width="50" />
+            <el-table-column type="selection" width="50" reserve-selection />
             <el-table-column label="题干" min-width="280">
               <template #default="{ row }">{{ getQuestionPreview(row.stem) }}</template>
             </el-table-column>
@@ -495,6 +534,13 @@ onMounted(async () => {
   color: var(--color-text-muted);
   font-size: 0.85rem;
   white-space: nowrap;
+}
+
+.question-picker-tip {
+  margin: calc(var(--space-sm) * -1) 0 var(--space-md);
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
 }
 
 .selected-question-panel {

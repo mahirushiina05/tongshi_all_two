@@ -8,7 +8,7 @@ from app.core.response import success
 from app.core.exceptions import BusinessException
 from app.schemas.common import (
     AuthUser, LoginRequest, RegisterRequest, ChangePasswordRequest,
-    ForgotPasswordRequest, ForgotPasswordCheckRequest,
+    ForgotPasswordCheckRequest,
     ForgotPasswordManualRequest, SecurityQuestionsUpdate,
 )
 from app.services.auth_service import (
@@ -93,17 +93,3 @@ def forgot_password_reset(data: ForgotPasswordCheckRequest, db: Session = Depend
 def forgot_password_request(data: ForgotPasswordManualRequest, db: Session = Depends(get_db)):
     return success(submit_reset_request(db, data.user_id, data.message))
 
-
-@router.post("/password/forgot", summary="忘记密码（兜底兼容）")
-def forgot_password_route(
-    data: ForgotPasswordRequest,
-    db: Session = Depends(get_db),
-):
-    """旧接口保留兼容：直接用学号重置密码（前端逐步迁移到新流程）"""
-    user = db.query(User).filter(User.id == data.id).first()
-    if not user:
-        raise BusinessException(404, "学号不存在")
-    user.hashed_password = get_password_hash(data.new_password)
-    user.needs_password_change = False
-    db.commit()
-    return success({"message": "密码重置成功"})

@@ -77,13 +77,27 @@ const modules = [
 ]
 
 let timer: ReturnType<typeof setInterval> | undefined
-onMounted(() => {
+
+const startTimer = () => {
+  if (timer) clearInterval(timer)
   timer = setInterval(() => {
     activeModule.value = (activeModule.value + 1) % modules.length
   }, 6000)
+}
+
+const stopTimer = () => {
+  if (timer) {
+    clearInterval(timer)
+    timer = undefined
+  }
+}
+
+onMounted(() => {
+  startTimer()
 })
+
 onUnmounted(() => {
-  if (timer) clearInterval(timer)
+  stopTimer()
 })
 </script>
 
@@ -108,7 +122,8 @@ onUnmounted(() => {
           class="module-card fade-up"
           :class="{ active: activeModule === index }"
           :style="{ '--card-gradient': mod.gradient, '--card-color': mod.color, '--card-color-light': mod.colorLight, transitionDelay: `${index * 0.1}s` }"
-          @mouseenter="activeModule = index"
+          @mouseenter="() => { activeModule = index; stopTimer(); }"
+          @mouseleave="startTimer"
           @click="router.push(mod.route)"
         >
           <div class="card-header">

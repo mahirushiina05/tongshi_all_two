@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { Material } from '../../api/material'
 import type { Question } from '../../api/question'
+import { downloadQuestionTemplate } from '../../api/question'
 import PdfPreviewDialog from '../../components/common/PdfPreviewDialog.vue'
 import { useUploadWithProgress } from '../../composables/useUploadWithProgress'
 import {
@@ -15,6 +16,7 @@ import {
   getAdminPublicCourses,
   getAdminPublicMaterials,
   getAdminPublicQuestions,
+  importAdminPublicQuestions,
   updateAdminPublicCourse,
   updateAdminPublicMaterial,
   updateAdminPublicQuestion,
@@ -77,6 +79,15 @@ const previewVisible = ref(false)
 const previewUrl = ref('')
 const previewTitle = ref('')
 const previewFileId = ref<number | undefined>(undefined)
+
+// Excel 导入题目
+const importDialogVisible = ref(false)
+const importFile = ref<File | null>(null)
+const importInput = ref<HTMLInputElement | null>(null)
+const importing = ref(false)
+const importErrors = ref<{ row: number; reason: string }[]>([])
+const importErrorDialogVisible = ref(false)
+const templateType = ref<'all' | 'choice' | 'fill' | 'multi_choice'>('all')
 
 function previewMaterial(row: Material) {
   previewTitle.value = row.title
@@ -352,6 +363,67 @@ async function removeQuestion(question: Question) {
   }
 }
 
+// ── Excel 批量导入题目 ─────────────────────────────────────────────────
+
+function openImportQuestions() {
+  if (!selectedCourse.value) return
+  importFile.value = null
+  templateType.value = 'all'
+  importDialogVisible.value = true
+}
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+async function handleDownloadTemplate() {
+  try {
+    const blob = await downloadQuestionTemplate(templateType.value)
+    const filenameMap: Record<string, string> = {
+      choice: 'choice-question-template.xlsx',
+      fill: 'fill-question-template.xlsx',
+      multi_choice: 'multi-choice-question-template.xlsx',
+      all: 'question-template.xlsx',
+    }
+    triggerDownload(blob as Blob, filenameMap[templateType.value] || 'question-template.xlsx')
+  } catch {
+    ElMessage.error('模板下载失败，请稍后重试')
+  }
+}
+
+function handleImportFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  importFile.value = input.files?.[0] || null
+}
+
+async function handleImportQuestions() {
+  if (!selectedCourse.value) return
+  if (!importFile.value) {
+    ElMessage.warning('请选择文件')
+    return
+  }
+  importing.value = true
+  try {
+    const result = await importAdminPublicQuestions(selectedCourse.value.id, importFile.value)
+    ElMessage.success(`导入完成：成功 ${result.success_count} 题，失败 ${result.fail_count} 题`)
+    if (result.errors && result.errors.length > 0) {
+      importErrors.value = result.errors
+      importErrorDialogVisible.value = true
+    }
+    importDialogVisible.value = false
+    await Promise.all([fetchContent(), fetchCourses(selectedCourse.value.id)])
+  } catch {
+    ElMessage.error('导入失败，请检查文件格式')
+  } finally {
+    importing.value = false
+  }
+}
+
 onMounted(() => fetchCourses())
 </script>
 
@@ -442,6 +514,7 @@ onMounted(() => fetchCourses())
 
             <el-tab-pane label="题库" name="questions">
               <div class="tab-toolbar">
+                <el-button size="small" @click="openImportQuestions">导入题目</el-button>
                 <el-button type="primary" size="small" @click="openCreateQuestion">新增题目</el-button>
               </div>
               <el-table :data="questions" v-loading="contentLoading" border stripe style="width: 100%">
@@ -540,6 +613,55 @@ onMounted(() => fetchCourses())
       :url="previewUrl"
       :file-id="previewFileId"
     />
+
+    <!-- Excel 批量导入题目 -->
+    <el-dialog v-model="importDialogVisible" title="Excel 批量导入题目" width="560px">
+      <div class="import-info">
+        <p>请先选择模板类型并下载，再按模板填写后上传。</p>
+        <table class="format-table">
+          <thead>
+            <tr><th>题型</th><th>题干</th><th>选项（选择题用 | 分隔）</th><th>答案</th><th>解析</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>choice</td><td>图灵测试由谁提出？</td><td>A. 图灵|B. 冯·诺依曼|C. 乔布斯|D. 爱因斯坦</td><td>A</td><td>图灵提出了图灵测试。</td></tr>
+            <tr><td>multi_choice</td><td>以下哪些是编程语言？</td><td>A. Python|B. Java|C. HTML|D. C++</td><td>ABD</td><td>HTML 是标记语言，不是编程语言。</td></tr>
+            <tr><td>fill</td><td>中国的首都是哪里？</td><td></td><td>北京</td><td>填空题直接填写答案关键词。</td></tr>
+          </tbody>
+        </table>
+        <p class="import-note">"题型"支持 choice、multi_choice 和 fill。多选题答案列填写排序后的字母组合，如 ABD。导入后会自动同步到教师副本。</p>
+      </div>
+      <div class="import-actions">
+        <div class="template-block">
+          <el-select v-model="templateType" style="width: 160px">
+            <el-option label="全部题型模板" value="all" />
+            <el-option label="选择题模板" value="choice" />
+            <el-option label="多选题模板" value="multi_choice" />
+            <el-option label="填空题模板" value="fill" />
+          </el-select>
+          <el-button class="download-btn" @click="handleDownloadTemplate">下载模板</el-button>
+        </div>
+        <div class="upload-zone" @click="importInput?.click()">
+          <input ref="importInput" type="file" accept=".xlsx,.xls" hidden @change="handleImportFileChange" />
+          <span v-if="!importFile">点击选择 Excel 文件</span>
+          <span v-else class="file-name">{{ importFile.name }}</span>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="importDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="importing" @click="handleImportQuestions">开始导入</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 导入失败详情 -->
+    <el-dialog v-model="importErrorDialogVisible" title="导入失败详情" width="560px">
+      <el-table :data="importErrors" stripe max-height="400">
+        <el-table-column prop="row" label="行号" width="80" />
+        <el-table-column prop="reason" label="失败原因" />
+      </el-table>
+      <template #footer>
+        <el-button @click="importErrorDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -571,10 +693,9 @@ onMounted(() => fetchCourses())
 }
 
 .course-grid {
-  display: grid;
-  grid-template-columns: minmax(480px, 0.95fr) minmax(460px, 1.05fr);
+  display: flex;
+  flex-direction: column;
   gap: 18px;
-  align-items: flex-start;
 }
 
 .course-panel,
@@ -637,9 +758,51 @@ onMounted(() => fetchCourses())
   line-height: 32px;
 }
 
-@media (max-width: 1100px) {
-  .course-grid {
-    grid-template-columns: 1fr;
-  }
+.import-info {
+  margin-bottom: var(--space-md);
 }
+
+.import-info p {
+  margin: 0 0 var(--space-sm);
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.import-note {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.format-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  margin: var(--space-sm) 0;
+}
+
+.format-table th,
+.format-table td {
+  border: 1px solid var(--color-border);
+  padding: 0.35rem 0.5rem;
+  text-align: center;
+}
+
+.import-actions {
+  display: flex;
+  gap: var(--space-lg);
+  align-items: stretch;
+  margin-top: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.template-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.download-btn {
+  align-self: flex-start;
+}
+
 </style>

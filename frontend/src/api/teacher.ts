@@ -15,9 +15,6 @@ export interface Student {
   major: string
   class_id: number | null
   class_name: string
-  progress: number
-  exercises: number
-  accuracy: number
   completed_tasks: number
   incomplete_tasks: number
   task_completion_rate: number

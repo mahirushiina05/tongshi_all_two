@@ -24,7 +24,6 @@ from app.models.entities import (
     ProjectLike,
     QuizAttempt,
     StudentClassEnrollment,
-    StudentProgress,
     TaskCompletion,
     User,
 )
@@ -102,8 +101,6 @@ def _delete_student_data(db: Session, student_id: str):
                              student_id).delete(synchronize_session=False)
     db.query(QuizAttempt).filter(QuizAttempt.user_id ==
                                  student_id).delete(synchronize_session=False)
-    db.query(StudentProgress).filter(StudentProgress.user_id ==
-                                     student_id).delete(synchronize_session=False)
     db.query(AnnouncementRead).filter(AnnouncementRead.user_id ==
                                       student_id).delete(synchronize_session=False)
     db.query(TaskCompletion).filter(TaskCompletion.user_id ==

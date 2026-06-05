@@ -11,7 +11,7 @@ from openpyxl import Workbook, load_workbook
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.core.security import get_current_user, require_role
+from app.core.security import get_current_user, require_role, require_roles
 from app.core.response import success, paginated_success
 from app.core.exceptions import BusinessException
 from app.core.upload_validation import validate_upload, ALLOWED_EXCEL_EXTENSIONS, MAX_EXCEL_SIZE
@@ -175,23 +175,23 @@ def _download_template_response(template_type: str):
     return Response(content=content, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers=headers)
 
 
-@router.get("/import/template", summary="下载题目导入模板", description="教师端：下载 Excel 批量导入模板（中文表头，支持选择题和填空题）")
-def download_question_template(template_type: str = Query("all", pattern="^(all|choice|fill|multi_choice)$"), current_user: AuthUser = Depends(require_role("teacher"))):
+@router.get("/import/template", summary="下载题目导入模板", description="下载 Excel 批量导入模板（中文表头，支持选择题和填空题）")
+def download_question_template(template_type: str = Query("all", pattern="^(all|choice|fill|multi_choice)$"), current_user: AuthUser = Depends(require_roles("teacher", "admin"))):
     return _download_template_response(template_type)
 
 
-@router.get("/import/template/choice", summary="下载选择题导入模板", description="教师端：下载选择题 Excel 模板")
-def download_choice_question_template(current_user: AuthUser = Depends(require_role("teacher"))):
+@router.get("/import/template/choice", summary="下载选择题导入模板", description="下载选择题 Excel 模板")
+def download_choice_question_template(current_user: AuthUser = Depends(require_roles("teacher", "admin"))):
     return _download_template_response("choice")
 
 
-@router.get("/import/template/fill", summary="下载填空题导入模板", description="教师端：下载填空题 Excel 模板")
-def download_fill_question_template(current_user: AuthUser = Depends(require_role("teacher"))):
+@router.get("/import/template/fill", summary="下载填空题导入模板", description="下载填空题 Excel 模板")
+def download_fill_question_template(current_user: AuthUser = Depends(require_roles("teacher", "admin"))):
     return _download_template_response("fill")
 
 
-@router.get("/import/template/multi_choice", summary="下载多选题导入模板", description="教师端：下载多选题 Excel 模板")
-def download_multi_choice_question_template(current_user: AuthUser = Depends(require_role("teacher"))):
+@router.get("/import/template/multi_choice", summary="下载多选题导入模板", description="下载多选题 Excel 模板")
+def download_multi_choice_question_template(current_user: AuthUser = Depends(require_roles("teacher", "admin"))):
     return _download_template_response("multi_choice")
 
 

@@ -19,8 +19,6 @@ class User(Base):
 
     quiz_attempts = relationship(
         "QuizAttempt", back_populates="user", cascade="all, delete-orphan")
-    progress = relationship(
-        "StudentProgress", back_populates="user", cascade="all, delete-orphan")
     projects = relationship(
         "Project", back_populates="author", cascade="all, delete-orphan")
     likes = relationship("ProjectLike", back_populates="user",
@@ -77,8 +75,6 @@ class Course(Base):
         "Material", back_populates="course", cascade="all, delete-orphan")
     questions = relationship(
         "Question", back_populates="course", cascade="all, delete-orphan")
-    progress = relationship(
-        "StudentProgress", back_populates="course", cascade="all, delete-orphan")
 
 
 class Material(Base):
@@ -130,21 +126,6 @@ class QuizAttempt(Base):
 
     user = relationship("User", back_populates="quiz_attempts")
     question = relationship("Question")
-
-
-class StudentProgress(Base):
-    __tablename__ = "student_progress"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(String(32), ForeignKey(
-        "users.id"), nullable=False, index=True)
-    course_id = Column(Integer, ForeignKey(
-        "courses.id"), nullable=False, index=True)
-    learn_progress = Column(Integer, default=0)
-    questions_done = Column(Integer, default=0)
-    accuracy = Column(Integer, default=0)
-
-    user = relationship("User", back_populates="progress")
-    course = relationship("Course", back_populates="progress")
 
 
 class Project(Base):

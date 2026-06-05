@@ -78,3 +78,12 @@ def require_role(role: str):
             raise BusinessException(403, f"需要{role}权限")
         return current_user
     return _check
+
+
+def require_roles(*roles: str):
+    """Dependency factory that checks current user has one of the required roles."""
+    async def _check(current_user: AuthUser = Depends(get_current_user)):
+        if current_user.role not in roles:
+            raise BusinessException(403, f"需要{'/'.join(roles)}权限")
+        return current_user
+    return _check

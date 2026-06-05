@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadFile } from 'element-plus'
 import {
   getTeachers,
   createTeacher,
   deleteTeacher,
+  getTeacherDependencies,
   resetTeacherPassword,
   importTeachers,
 } from '../../api/admin'
@@ -62,11 +63,41 @@ const handleAdd = async () => {
 
 const handleDelete = async (teacherId: string) => {
   try {
-    await deleteTeacher(teacherId)
+    // 第一步：检查关联数据
+    const deps = await getTeacherDependencies(teacherId)
+    const hasDeps = deps.course_count > 0 || deps.class_count > 0 || deps.announcement_count > 0
+
+    if (hasDeps) {
+      // 有关联数据，弹二次确认
+      const parts: string[] = []
+      if (deps.course_count > 0) parts.push(`${deps.course_count} 个课程`)
+      if (deps.class_count > 0) parts.push(`${deps.class_count} 个班级`)
+      if (deps.announcement_count > 0) parts.push(`${deps.announcement_count} 条公告`)
+      if (deps.project_count > 0) parts.push(`${deps.project_count} 个作品`)
+      if (deps.showcase_count > 0) parts.push(`${deps.showcase_count} 条图文`)
+      const detail = parts.join('、')
+
+      await ElMessageBox.confirm(
+        `该教师名下仍有 ${detail}，删除后将<strong>永久清除</strong>这些数据且不可恢复。<br/><br/>确定要继续删除吗？`,
+        '确认删除教师',
+        {
+          confirmButtonText: '确认删除',
+          cancelButtonText: '取消',
+          type: 'warning',
+          dangerouslyUseHTMLString: true,
+        },
+      )
+      // 用户确认，强制删除
+      await deleteTeacher(teacherId, true)
+    } else {
+      // 无关联数据，直接删除
+      await deleteTeacher(teacherId)
+    }
+
     ElMessage.success('教师账号已删除')
     await fetchTeachers()
-  } catch {
-    ElMessage.error('删除失败')
+  } catch (err: any) {
+    if (err !== 'cancel') ElMessage.error(err?.message || '删除失败')
   }
 }
 
@@ -174,16 +205,7 @@ onMounted(fetchTeachers)
               <el-button size="small" type="warning" text>重置密码</el-button>
             </template>
           </el-popconfirm>
-          <el-popconfirm
-            title="确定要删除该教师账号吗？此操作不可恢复。"
-            confirm-button-text="确定删除"
-            cancel-button-text="取消"
-            @confirm="handleDelete(row.id)"
-          >
-            <template #reference>
-              <el-button size="small" type="danger" text>删除</el-button>
-            </template>
-          </el-popconfirm>
+          <el-button size="small" type="danger" text @click="handleDelete(row.id)">删除</el-button>
         </template>
       </el-table-column>
 

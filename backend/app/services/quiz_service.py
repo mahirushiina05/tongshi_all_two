@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm import joinedload
 
 from app.core.exceptions import BusinessException
-from app.models.entities import Class, Question, QuizAttempt, StudentClassEnrollment, StudentProgress
+from app.models.entities import Class, Question, QuizAttempt, StudentClassEnrollment
 from app.core.timezone_utils import to_beijing_iso, beijing_today
 
 
@@ -39,37 +39,6 @@ def submit_answer(db: Session, user_id: str, question_id: int, user_answer: str,
         is_correct=is_correct,
     )
     db.add(attempt)
-
-    # 更新课程维度进度
-    sp = db.query(StudentProgress).filter(
-        StudentProgress.user_id == user_id,
-        StudentProgress.course_id == question.course_id,
-    ).first()
-    if not sp:
-        sp = StudentProgress(user_id=user_id, course_id=question.course_id)
-        db.add(sp)
-
-    # 先 flush 确保新增的 attempt 对后续查询可见（session 设置了 autoflush=False）
-    db.flush()
-
-    total = db.query(QuizAttempt).filter(
-        QuizAttempt.user_id == user_id,
-        QuizAttempt.question_id.in_(
-            db.query(Question.id).filter(
-                Question.course_id == question.course_id)
-        ),
-    ).count()
-    correct_count = db.query(QuizAttempt).filter(
-        QuizAttempt.user_id == user_id,
-        QuizAttempt.is_correct == True,
-        QuizAttempt.question_id.in_(
-            db.query(Question.id).filter(
-                Question.course_id == question.course_id)
-        ),
-    ).count()
-    sp.questions_done = total
-    sp.accuracy = int(correct_count / total * 100) if total > 0 else 0
-
     db.commit()
     return {
         "id": attempt.id,
@@ -155,14 +124,30 @@ def get_quiz_stats(db: Session, user_id: str):
 
 
 def get_course_quiz_stats(db: Session, user_id: str, course_id: int):
-    sp = db.query(StudentProgress).filter(
-        StudentProgress.user_id == user_id,
-        StudentProgress.course_id == course_id,
-    ).first()
+    # 权限校验：学生必须加入该课程才能查看统计
+    if not _student_can_access_course(db, user_id, course_id):
+        raise BusinessException(404, "课程不存在或无权限访问")
+
+    # 计算该用户在该课程下的答题统计
+    course_question_ids = db.query(Question.id).filter(Question.course_id == course_id)
+
+    questions_done = db.query(QuizAttempt).filter(
+        QuizAttempt.user_id == user_id,
+        QuizAttempt.question_id.in_(course_question_ids),
+    ).count()
+
+    correct_count = db.query(QuizAttempt).filter(
+        QuizAttempt.user_id == user_id,
+        QuizAttempt.is_correct == True,
+        QuizAttempt.question_id.in_(course_question_ids),
+    ).count()
+
+    accuracy = int(correct_count / questions_done * 100) if questions_done > 0 else 0
+
     return {
         "course_id": course_id,
-        "questions_done": sp.questions_done if sp else 0,
-        "accuracy": sp.accuracy if sp else 0,
+        "questions_done": questions_done,
+        "accuracy": accuracy,
     }
 
 

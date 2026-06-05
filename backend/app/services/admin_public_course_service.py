@@ -95,6 +95,22 @@ def delete_public_course(db: Session, course_id: int) -> bool:
     return True
 
 
+def get_public_material(db: Session, material_id: int) -> Material | None:
+    """查询公共课程资料（仅查存在性，不触发同步）。"""
+    return db.query(Material).join(Course).filter(
+        Material.id == material_id,
+        Course.is_public.is_(True),
+    ).first()
+
+
+def get_public_question(db: Session, question_id: int) -> Question | None:
+    """查询公共课程题目（仅查存在性，不触发同步）。"""
+    return db.query(Question).join(Course).filter(
+        Question.id == question_id,
+        Course.is_public.is_(True),
+    ).first()
+
+
 def list_public_materials(db: Session, course_id: int) -> list[Material]:
     course = _get_public_course(db, course_id)
     if not course:
