@@ -17,12 +17,15 @@ const pageSize = ref(20)
 const total = ref(0)
 const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
+const selectedQuestions = ref<Question[]>([])
+const batchDeleting = ref(false)
 const importDialogVisible = ref(false)
 const importFile = ref<File | null>(null)
 const importInput = ref<HTMLInputElement | null>(null)
 const importing = ref(false)
 const importErrors = ref<{ row: number; reason: string }[]>([])
 const importErrorDialogVisible = ref(false)
+const importFailureReason = ref('')
 
 const form = reactive({
   course_id: '' as number | '',
@@ -157,6 +160,47 @@ async function handleDelete(row: Question) {
   }
 }
 
+function handleSelectionChange(rows: Question[]) {
+  selectedQuestions.value = rows
+}
+
+function selectableQuestion(row: Question) {
+  return !row.is_synced
+}
+
+async function handleBatchDelete() {
+  const deletableRows = selectedQuestions.value.filter(selectableQuestion)
+  if (deletableRows.length === 0) {
+    ElMessage.warning('请选择可删除的题目')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(`确定删除选中的 ${deletableRows.length} 道题目？删除后不可恢复。`, '批量删除确认', {
+      type: 'warning',
+      confirmButtonText: '确认删除',
+      cancelButtonText: '取消',
+    })
+    batchDeleting.value = true
+    const results = await Promise.allSettled(deletableRows.map(item => deleteQuestion(item.id)))
+    const successIds = results
+      .map((result, index) => result.status === 'fulfilled' ? deletableRows[index]?.id : undefined)
+      .filter((id): id is number => typeof id === 'number')
+    const failedCount = results.length - successIds.length
+    questions.value = questions.value.filter(item => !successIds.includes(item.id))
+    selectedQuestions.value = []
+    if (failedCount > 0) {
+      ElMessage.warning(`已删除 ${successIds.length} 道题，${failedCount} 道删除失败`)
+    } else {
+      ElMessage.success(`已删除 ${successIds.length} 道题`)
+    }
+    await loadQuestions()
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error('批量删除失败，请稍后重试')
+  } finally {
+    batchDeleting.value = false
+  }
+}
+
 const templateType = ref<'all' | 'choice' | 'fill' | 'multi_choice'>('all')
 
 function openImport() {
@@ -195,18 +239,26 @@ async function handleImport() {
     return
   }
   importing.value = true
+  importFailureReason.value = ''
+  importErrors.value = []
   try {
     const result = await importQuestions(importFile.value)
     ElMessage.success(`导入完成：成功 ${result.success_count} 题，失败 ${result.fail_count} 题`)
     if (result.errors && result.errors.length > 0) {
       importErrors.value = result.errors
       importErrorDialogVisible.value = true
+    } else {
+      importErrorDialogVisible.value = false
     }
     importDialogVisible.value = false
     page.value = 1
     await loadQuestions()
-  } catch {
-    ElMessage.error('导入失败，请检查文件格式和课程名称')
+  } catch (error) {
+    const message = error instanceof Error && error.message ? error.message : '导入失败，请检查文件格式和课程名称'
+    importFailureReason.value = message
+    importErrors.value = []
+    importErrorDialogVisible.value = true
+    ElMessage.error(message)
   } finally {
     importing.value = false
   }
@@ -239,10 +291,20 @@ onMounted(async () => {
       </el-select>
       <el-input v-model="filterTag" placeholder="搜索标签" clearable style="width: 160px" @keyup.enter="page = 1; loadQuestions()" @clear="page = 1; loadQuestions()" />
       <el-button @click="resetFilter">重置</el-button>
+      <el-button
+        type="danger"
+        plain
+        :disabled="selectedQuestions.length === 0"
+        :loading="batchDeleting"
+        @click="handleBatchDelete"
+      >
+        批量删除
+      </el-button>
       <span class="filter-count">共 {{ total }} 题</span>
     </div>
 
-    <el-table :data="questions" stripe style="width: 100%" v-loading="loading">
+    <el-table :data="questions" stripe style="width: 100%" v-loading="loading" @selection-change="handleSelectionChange">
+      <el-table-column type="selection" width="48" :selectable="selectableQuestion" />
       <el-table-column type="index" label="序号" width="70" />
       <el-table-column label="题干" min-width="260">
         <template #default="{ row }">
@@ -385,7 +447,10 @@ onMounted(async () => {
 
     <!-- 导入失败详情弹窗 -->
     <el-dialog v-model="importErrorDialogVisible" title="导入失败详情" width="560px">
-      <el-table :data="importErrors" stripe max-height="400">
+      <div v-if="importFailureReason" class="import-failure-reason">
+        {{ importFailureReason }}
+      </div>
+      <el-table v-else :data="importErrors" stripe max-height="400">
         <el-table-column prop="row" label="行号" width="80" />
         <el-table-column prop="reason" label="失败原因" />
       </el-table>
@@ -442,6 +507,15 @@ onMounted(async () => {
   align-items: stretch;
   margin-top: var(--space-md);
   flex-wrap: wrap;
+}
+
+.import-failure-reason {
+  padding: var(--space-md);
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-sm);
+  background: #fef2f2;
+  color: #b91c1c;
+  line-height: 1.6;
 }
 
 .template-block {

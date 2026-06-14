@@ -54,6 +54,14 @@ def _normalize_tags(value) -> list[str]:
     return tags
 
 
+def _row_value(row: dict, *keys: str):
+    for key in keys:
+        value = row.get(key)
+        if value is not None and str(value).strip() != "":
+            return value
+    return ""
+
+
 def get_question(db: Session, question_id: int, teacher_id: str | None = None):
     query = db.query(Question).join(Course, Course.id == Question.course_id).filter(Question.id == question_id)
     if teacher_id is not None:
@@ -239,22 +247,22 @@ def import_questions_from_excel(db: Session, rows: list[dict], teacher_id: str):
     errors = []
     for idx, row in enumerate(rows, start=2):
         try:
-            course_name = str(row.get("课程名称", row.get("course", ""))).strip()
+            course_name = str(_row_value(row, "课程名称", "课程", "course", "course_name")).strip()
             course = db.query(Course).filter(
                 Course.name == course_name,
                 Course.created_by == teacher_id,
             ).first()
             if not course:
                 raise BusinessException(400, f"未找到课程: {course_name}")
-            q_type = str(row.get("题型", row.get("type", ""))).strip()
-            stem = str(row.get("题干", row.get("stem", ""))).strip()
+            q_type = str(_row_value(row, "题型", "type")).strip()
+            stem = str(_row_value(row, "题干", "stem")).strip()
             if not stem:
                 raise BusinessException(400, "题干为空")
-            options = str(row.get("选项（选择题用 | 分隔）", row.get("options", ""))).strip()
+            options = str(_row_value(row, "选项（选择题用 | 分隔）", "选项", "options")).strip()
             option_list = [x.strip() for x in options.split("|") if x.strip()] if options else []
-            answer = str(row.get("答案", row.get("answer", ""))).strip()
-            explanation = str(row.get("解析", row.get("explanation", ""))).strip()
-            tags = _normalize_tags(row.get("标签", row.get("鏍囩", row.get("tags", ""))))
+            answer = str(_row_value(row, "答案", "answer")).strip()
+            explanation = str(_row_value(row, "解析", "explanation")).strip()
+            tags = _normalize_tags(_row_value(row, "标签", "课程标签", "tags", "course_tags"))
             if q_type not in {"choice", "fill", "multi_choice"}:
                 raise BusinessException(400, "题型必须为 choice、fill 或 multi_choice")
             if q_type in {"choice", "multi_choice"} and not option_list:
